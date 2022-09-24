@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:padding="10dp">
+
+
+    <LinearLayout
+        android:id="@+id/left_layout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="left"
+        tools:ignore="RtlHardcoded">
+        <ImageView
+            android:id="@+id/ivicon"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+
+            android:layout_gravity="center"
+            android:src="@drawable/right03" />
+        <TextView
+            android:id="@+id/left_msg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="10dp"
+            android:gravity="center"
+            android:textIsSelectable="true"
+            android:background="@drawable/left01"
+            android:textColor="#0B0A0A"
+            />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/right_layout"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/right03"
+        android:layout_gravity="right"
+        tools:ignore="RtlHardcoded">
+        <TextView
+            android:id="@+id/right_msg"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_margin="10dp"
+            android:textIsSelectable="true"
+            android:gravity="center" />
+    </LinearLayout>
+
+</LinearLayout>
