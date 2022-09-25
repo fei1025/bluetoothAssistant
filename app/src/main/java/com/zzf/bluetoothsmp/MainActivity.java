@@ -4,6 +4,7 @@ import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
+import android.bluetooth.le.BluetoothLeAdvertiser;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -25,9 +26,11 @@ import com.zzf.bluetoothsmp.entity.Msg;
 import com.zzf.bluetoothsmp.utils.CheckUpdate;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
@@ -61,10 +64,6 @@ public class MainActivity extends BaseActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         new CheckUpdate().check(MainActivity.this);
-
-        int defaultNightMode = AppCompatDelegate.getDefaultNightMode();
-        Log.d(TAG, "当前什么模式:"+defaultNightMode);
-
         // 设置title
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
@@ -84,8 +83,6 @@ public class MainActivity extends BaseActivity {
             @Override
             public void onRefresh() {
                 refreshFruits();
-
-
             }
         });
         adapter.setOnItemClickListener(new FruitAdapter.onItemDeleteListener() {
@@ -96,7 +93,7 @@ public class MainActivity extends BaseActivity {
                 BluetoothDevice bluetoothDevice = fruit.getBluetoothDevice();
                 bluetoothObject.setBluetoothDevice(bluetoothDevice);
                 try {
-                    bluetoothObject.connect(MainActivity.this,mHandler);
+                    bluetoothObject.connect(MainActivity.this, mHandler);
                 } catch (Exception e) {
                     ToastUtil.toastWord(MainActivity.this, getString(R.string.connect_fails));
                     e.printStackTrace();
@@ -127,21 +124,21 @@ public class MainActivity extends BaseActivity {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                try {
-                    Thread.sleep(2000);
 
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
                 runOnUiThread(new Runnable() {
                     @SuppressLint("NotifyDataSetChanged")
                     @Override
                     public void run() {
+                        fruitList.clear();
                         unregisterReceiver(discoveryReceiver);
                         initBluetooth();
-                        fruitList.clear();
                         adapter = new FruitAdapter(fruitList);
                         mRecyclerView.setAdapter(adapter);
+                        try {
+                            Thread.sleep(2000);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
+                        }
                         swipeRefresh.setRefreshing(false);
                         //adapter.notifyDataSetChanged();
                     }
@@ -176,9 +173,6 @@ public class MainActivity extends BaseActivity {
 
     public void onResume() {
         super.onResume();
-        Log.d(TAG, "onResume:66666666666666666666666666666666666");
-
-
     }
 
 
@@ -272,7 +266,7 @@ public class MainActivity extends BaseActivity {
                 mBluetooth = BluetoothAdapter.getDefaultAdapter();
             }
             if (mBluetooth == null) {
-                ToastUtil.toastWord(this, getString(R.string.BluetoothNotFound));
+                SystemExit(getString(R.string.BluetoothNotFound));
             }
         }
         //蓝牙服务未启动
@@ -283,6 +277,36 @@ public class MainActivity extends BaseActivity {
                 SystemExit(getString(R.string.initBluetooth));
             }
         }
+        if (mBluetooth.getName() != null && mBluetooth.getName().length() > 0) {
+            StaticObject.myBluetoothName = mBluetooth.getName();
+        } else {
+            StaticObject.myBluetoothName = mBluetooth.getAddress();
+        }
+        Set<BluetoothDevice> bondedDevices = mBluetooth.getBondedDevices();
+
+        if (bondedDevices != null && bondedDevices.size() != 0) {
+            for (BluetoothDevice device : bondedDevices) {
+     /*           boolean isConnect = false;
+                try {
+                    //获取当前连接的蓝牙信息
+                    isConnect = (boolean) device.getClass().getMethod("isConnected").invoke(device);
+                } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
+                    e.printStackTrace();
+                }*/
+                Fruit fruit = new Fruit();
+                fruit.setAddress(device.getAddress());
+                if (!fruitList.contains(fruit)) {
+                    fruit.setName(device.getName());
+                    //fruit.setRssi(isConnect+"");
+                    fruit.setState(device.getBondState());
+                    fruit.setBluetoothType(device.getType());
+                    fruit.setBluetoothDevice(device);
+                    fruitList.add(fruit);
+                }
+            }
+        }
+
+
         //需要过滤多个动作，则调用IntentFilter对象的addAction添加新动作
         IntentFilter discoveryFilter = new IntentFilter();
         //获取新的数据
@@ -315,20 +339,12 @@ public class MainActivity extends BaseActivity {
                 case BluetoothDevice.ACTION_FOUND:
                     //发现新的蓝牙设备
                     if (!fruitList.contains(fruit)) {
-                   /*     ParcelUuid[] uuids = device.getUuids();
-                        if (uuids != null) {
-                            Log.d(TAG, "发现蓝牙设备::" + device.getAddress() + ":");
-                            for (int i = 0; i < uuids.length; i++) {
-                                Log.d(TAG, "发现蓝牙设备::" + device.getAddress() + ":" + uuids[i].getUuid().toString());
-                                if (BluetoothObject.SPP_UUID.equalsIgnoreCase(uuids[i].getUuid().toString())) {
-                                    fruit.setIsConnect(0);
-                                    break;
-                                }
-                            }
-                        }*/
                         fruit.setName(device.getName());
-                        fruit.setRssi(device.getAlias());
+                        if(fruit.getName() ==null ||fruit.getName().length()==0){
+                            fruit.setName("N/A");
+                        }
                         fruit.setState(bondState);
+                        fruit.setBluetoothType(device.getType());
                         short rssi = intent.getExtras().getShort(BluetoothDevice.EXTRA_RSSI);
                         fruit.setRssi(rssi + "");
                         fruit.setBluetoothDevice(device);
@@ -427,8 +443,8 @@ public class MainActivity extends BaseActivity {
         public void handleMessage(Message msg) {
             switch (msg.what) {
                 case 0:
-                    String message =(String)msg.obj;
-                    ToastUtil.toastWord(MainActivity.this,message);
+                    String message = (String) msg.obj;
+                    ToastUtil.toastWord(MainActivity.this, message);
                     break;
                 default:
                     Log.e(TAG, "Unknown msg " + msg.what);

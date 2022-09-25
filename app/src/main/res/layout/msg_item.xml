@@ -13,22 +13,30 @@
         android:layout_height="wrap_content"
         android:layout_gravity="left"
         tools:ignore="RtlHardcoded">
-        <ImageView
-            android:id="@+id/ivicon"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-
-            android:layout_gravity="center"
-            android:src="@drawable/right03" />
+        <de.hdodenhof.circleimageview.CircleImageView
+            android:id="@+id/left_img"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginLeft="3dp"
+            android:layout_marginTop="5dp"
+            android:layout_marginBottom="5dp"
+            android:src="@drawable/header_left"
+            />
         <TextView
             android:id="@+id/left_msg"
+            android:layout_margin="10dp"
+            android:textIsSelectable="true"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_margin="10dp"
-            android:gravity="center"
-            android:textIsSelectable="true"
-            android:background="@drawable/left01"
-            android:textColor="#0B0A0A"
+            android:layout_marginLeft="10dp"
+            android:layout_marginRight="50dp"
+            android:background="@drawable/chat_left_bg"
+            android:gravity="center_vertical|left"
+            android:minHeight="40dp"
+            android:padding="10dp"
+            android:textColor="@color/black"
+            android:textSize="14sp"
+            android:text="chat"
             />
     </LinearLayout>
 
@@ -36,16 +44,33 @@
         android:id="@+id/right_layout"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:background="@drawable/right03"
         android:layout_gravity="right"
         tools:ignore="RtlHardcoded">
+
         <TextView
             android:id="@+id/right_msg"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_margin="10dp"
-            android:textIsSelectable="true"
-            android:gravity="center" />
+            android:layout_marginLeft="50dp"
+            android:layout_marginRight="10dp"
+            android:background="@drawable/chat_right_bg"
+            android:gravity="center_vertical|left"
+            android:minHeight="40dp"
+            android:padding="10dp"
+            android:layout_marginTop="5dp"
+
+            android:text="chat"
+            android:textColor="@color/white"
+            android:textSize="14sp" />
+
+        <de.hdodenhof.circleimageview.CircleImageView
+            android:id="@+id/right_img"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginRight="3dp"
+            android:layout_marginBottom="5dp"
+            android:src="@drawable/header_right"
+            />
     </LinearLayout>
 
 </LinearLayout>

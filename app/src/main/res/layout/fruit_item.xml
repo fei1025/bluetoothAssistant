@@ -7,18 +7,73 @@
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
-        android:layout_height="70dp">
+        android:layout_height="90dp">
+
+        <Button
+            android:id="@+id/button_connect"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="20dp"
+            android:text="连接"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
 
         <ImageView
             android:id="@+id/imageView"
-            android:layout_width="50dp"
-            android:layout_height="50dp"
+            android:layout_width="60dp"
+            android:layout_height="60dp"
             android:layout_marginStart="10dp"
             android:layout_marginTop="10dp"
             android:padding="8dp"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             app:srcCompat="@drawable/icon_bluetooth" />
+
+
+        <TextView
+            android:id="@+id/tv_bluetoothTypeName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginBottom="20dp"
+            android:text="aaacc"
+            android:textSize="12sp"
+            app:layout_constraintBottom_toBottomOf="@+id/imageView"
+            app:layout_constraintStart_toEndOf="@+id/imageView" />
+
+        <TextView
+            android:id="@+id/tv_stateName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="20dp"
+            android:text="ccc"
+            android:textSize="12sp"
+            app:layout_constraintBottom_toBottomOf="@+id/tv_bluetoothTypeName"
+            app:layout_constraintEnd_toStartOf="@+id/button_connect" />
+
+        <TextView
+            android:id="@+id/tv_address"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginBottom="4dp"
+            android:text="aaa"
+            android:textSize="12sp"
+            app:layout_constraintBottom_toBottomOf="@+id/imageView"
+            app:layout_constraintStart_toEndOf="@+id/imageView"
+            app:layout_constraintTop_toTopOf="@+id/tv_bluetoothTypeName"
+            app:layout_constraintVertical_bias="1.0" />
+
+        <TextView
+            android:id="@+id/tv_rssi"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="20dp"
+            android:text="ccc"
+            android:textSize="12sp"
+            app:layout_constraintBottom_toBottomOf="@+id/tv_address"
+            app:layout_constraintEnd_toStartOf="@+id/button_connect" />
 
         <TextView
             android:id="@+id/tv_name"
@@ -29,44 +84,11 @@
             android:layout_marginEnd="10dp"
             android:text="ddd"
             android:textColor="@color/black"
-            android:textSize="18sp"
+            android:textSize="14sp"
             android:textStyle="bold"
-            app:layout_constraintStart_toEndOf="@+id/imageView"
             app:layout_constraintEnd_toStartOf="@id/button_connect"
+            app:layout_constraintStart_toEndOf="@+id/imageView"
             app:layout_constraintTop_toTopOf="@+id/imageView" />
-
-
-        <TextView
-            android:id="@+id/tv_address"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:layout_marginEnd="10dp"
-            android:layout_marginBottom="4dp"
-            android:text="aaa"
-            android:textSize="12sp"
-            app:layout_constraintBottom_toBottomOf="@+id/imageView"
-            app:layout_constraintStart_toEndOf="@+id/imageView" />
-
-        <TextView
-            android:id="@+id/tv_rssi"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginEnd="20dp"
-            android:text="ccc"
-            android:textSize="12sp"
-            app:layout_constraintBottom_toBottomOf="@+id/tv_address"
-            app:layout_constraintEnd_toStartOf="@+id/button_connect"
-            />
-        <Button
-            android:id="@+id/button_connect"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:text="连接"
-            android:layout_marginEnd="20dp"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toTopOf="parent"  />
 
 
     </androidx.constraintlayout.widget.ConstraintLayout>

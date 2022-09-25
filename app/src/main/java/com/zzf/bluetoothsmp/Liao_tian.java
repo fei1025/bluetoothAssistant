@@ -40,6 +40,7 @@ public class Liao_tian extends AppCompatActivity {
     public String TAG = "Liao_tian";
     private String bluetoothAdd;
     private String UUID;
+    String bluetoothName;
 
     public Handler mHandler = new Handler(Looper.getMainLooper()) {
         @Override
@@ -70,8 +71,11 @@ public class Liao_tian extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_liao_tian);
         Toolbar toolbar = findViewById(R.id.lao_tian_toolbar);
-        String bluetoothName = getIntent().getStringExtra("bluetoothName");
+         bluetoothName = getIntent().getStringExtra("bluetoothName");
         bluetoothAdd = getIntent().getStringExtra("bluetoothAdd");
+        if(bluetoothName ==null || bluetoothName.length()==0){
+            bluetoothName="无";
+        }
         toolbar.setTitle(bluetoothName);
         setSupportActionBar(toolbar);
         inputText = findViewById(R.id.input_text);
@@ -81,7 +85,7 @@ public class Liao_tian extends AppCompatActivity {
         msgRecyclerView.setLayoutManager(linearLayout);
         MsgAdapter adapter = new MsgAdapter(msgList);
         msgRecyclerView.setAdapter(adapter);
-        //监听发送事件
+        //监听按钮发送事件
         send.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -101,6 +105,7 @@ public class Liao_tian extends AppCompatActivity {
         StaticObject.bluetoothEvent.addEventListener(BluetoothType.RECEIVE, l -> {
             Msg msg = (Msg) l.getEventData()[0];
             if (bluetoothAdd.equals(msg.getBluetoothAdd())) {
+                msg.setBluetoothName(bluetoothName);
                 senHandlerMsg(0, msg);
             }
         }, UUID);
@@ -109,6 +114,7 @@ public class Liao_tian extends AppCompatActivity {
             Msg msg = (Msg) l.getEventData()[0];
             Log.d(TAG, "onCreate: " + msg.toString());
             if (bluetoothAdd.equals(msg.getBluetoothAdd())) {
+                msg.setBluetoothName(bluetoothName);
                 senHandlerMsg(0, msg);
             }
         }, UUID);

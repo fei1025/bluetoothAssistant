@@ -41,7 +41,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:hint="Type something here"
+                android:hint="@string/please_enter_information"
                 android:maxLines="2"
                 tools:ignore="Suspicious0dp" />
             <Button

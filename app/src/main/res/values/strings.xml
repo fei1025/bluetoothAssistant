@@ -11,4 +11,5 @@
     <string name="bluetoothConnection">蓝牙连接中</string>
     <string name="Disconnect">断开</string>
     <string name="initBluetooth">请启动蓝牙后重试</string>
+    <string name="please_enter_information">请输入信息</string>
 </resources>

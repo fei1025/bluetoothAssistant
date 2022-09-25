@@ -5,6 +5,7 @@ public class Msg  implements Comparable<Msg>{
     public static final int TYPE_RECEIVED =0;
     public  static final int TYPE_SENT =1;
     public String bluetoothAdd;
+    public String bluetoothName;
     private String content;
     private int type;
     // 0 默认值 连接正常 1:连接失败
@@ -18,6 +19,14 @@ public class Msg  implements Comparable<Msg>{
         this.content = content;
         this.type = type;
         this.bluetoothAdd = bluetoothAdd;
+    }
+
+    public String getBluetoothName() {
+        return bluetoothName;
+    }
+
+    public void setBluetoothName(String bluetoothName) {
+        this.bluetoothName = bluetoothName;
     }
 
     public String getContent() {

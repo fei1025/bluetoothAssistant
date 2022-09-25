@@ -5,6 +5,11 @@
       <map>
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/drawable-v24/ic_launcher_foreground.xml" value="0.4915" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/drawable-v24/icon_bluetooth.xml" value="0.316" />
+        <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/drawable/chat_left_bg.xml" value="0.4695" />
+        <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/drawable/chat_right_bg.xml" value="0.4695" />
+        <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/drawable/ic_beijing1.xml" value="0.4695" />
+        <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/drawable/ic_bluetooth.xml" value="0.4695" />
+        <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/drawable/ic_bluetooth_white.xml" value="0.4695" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/drawable/ic_duankai.xml" value="0.4185" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/drawable/ic_gengduotianchong.xml" value="0.316" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/drawable/ic_launcher_background.xml" value="0.3755" />
@@ -15,7 +20,7 @@
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/dialog_loading.xml" value="0.4125905797101449" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/fruit_item.xml" value="0.4125905797101449" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/loading.xml" value="0.4125905797101449" />
-        <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/msg_item.xml" value="0.1" />
+        <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/msg_item.xml" value="0.5" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/title.xml" value="0.31302083333333336" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/menu/liao_tian.xml" value="0.5536458333333333" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml" value="0.4915" />

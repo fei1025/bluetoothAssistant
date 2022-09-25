@@ -15,6 +15,8 @@ public class StaticObject {
     public static final BlockingQueue<Msg> mTaskQueue = new PriorityBlockingQueue<Msg>();
     //全局事件
     public static BluetoothEvent bluetoothEvent = new BluetoothEvent();
+    //本机蓝牙名字
+    public static String myBluetoothName ;
 
 
 }

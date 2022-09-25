@@ -1,6 +1,7 @@
 package com.zzf.bluetoothsmp.customAdapter;
 
 import android.annotation.SuppressLint;
+import android.graphics.Bitmap;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -10,6 +11,7 @@ import android.widget.TextView;
 
 import com.zzf.bluetoothsmp.Fruit;
 import com.example.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.utils.ImageUtils;
 
 import java.util.List;
 
@@ -43,6 +45,16 @@ public class FruitAdapter extends RecyclerView.Adapter<FruitAdapter.ViewHolder> 
         holder.tv_name.setText(fruit.getName());
         holder.tv_address.setText(fruit.getAddress());
         holder.tv_rssi.setText(fruit.getRssi());
+        holder.tv_stateName.setText(fruit.getStateName());
+        holder.tv_bluetoothTypeName.setText(fruit.getBluetoothTypeName());
+        String name =fruit.getName();
+        if(name ==null || name.length()==0){
+            name=fruit.getAddress();
+        }
+        Bitmap bitmap = ImageUtils.defaultAvatar(name);
+        if(bitmap!=null){
+            holder.fruitImage.setImageBitmap(bitmap);
+        }
         if (1 == fruit.getIsConnect()) {
             //隐藏按钮
             //holder.button.setVisibility(View.INVISIBLE);.
@@ -80,6 +92,8 @@ public class FruitAdapter extends RecyclerView.Adapter<FruitAdapter.ViewHolder> 
         ImageView fruitImage;
         TextView tv_name;
         TextView tv_address;
+        TextView tv_stateName;
+        TextView tv_bluetoothTypeName;
         TextView tv_rssi;
         Button button;
 
@@ -87,6 +101,8 @@ public class FruitAdapter extends RecyclerView.Adapter<FruitAdapter.ViewHolder> 
             super(itemView);
             fruitImage = itemView.findViewById(R.id.imageView);
             tv_name = itemView.findViewById(R.id.tv_name);
+            tv_bluetoothTypeName = itemView.findViewById(R.id.tv_bluetoothTypeName);
+            tv_stateName = itemView.findViewById(R.id.tv_stateName);
             tv_address = itemView.findViewById(R.id.tv_address);
             tv_rssi = itemView.findViewById(R.id.tv_rssi);
             button = itemView.findViewById(R.id.button_connect);

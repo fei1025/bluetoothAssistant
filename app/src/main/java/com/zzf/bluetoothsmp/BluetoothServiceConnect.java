@@ -33,6 +33,10 @@ public class BluetoothServiceConnect {
             this.bufferedInputStream = new BufferedInputStream(bluetoothSocket.getInputStream());
             bluetoothName = bluetoothSocket.getRemoteDevice().getName();
             bluetoothAdd=bluetoothSocket.getRemoteDevice().getAddress();
+            BluetoothServiceConnect bluetoothServiceConnect = StaticObject.bluetoothSocketMap.get(bluetoothSocket.getRemoteDevice().getAddress());
+            if(bluetoothServiceConnect !=null ){
+                return;
+            }
             StaticObject.bluetoothSocketMap.put(bluetoothSocket.getRemoteDevice().getAddress(), this);
             receiveMsg.start();
             //监听发送数据事件
