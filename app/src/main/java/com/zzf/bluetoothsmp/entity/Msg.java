@@ -1,13 +1,22 @@
 package com.zzf.bluetoothsmp.entity;
 
+import java.util.Date;
+
 public class Msg  implements Comparable<Msg>{
 
     public static final int TYPE_RECEIVED =0;
     public  static final int TYPE_SENT =1;
+    //这是发送方的地址
     public String bluetoothAdd;
+    //这里是发送方的名字
     public String bluetoothName;
     private String content;
     private int type;
+    //发送方的uuid
+    public String sendUuid;
+
+    public Date senTime =new Date();
+
     // 0 默认值 连接正常 1:连接失败
     private int stateType=0;
 
@@ -15,10 +24,26 @@ public class Msg  implements Comparable<Msg>{
         this.bluetoothAdd = bluetoothAdd;
     }
 
-    public Msg(String content, int type,String bluetoothAdd) {
+    public Date getSenTime() {
+        return senTime;
+    }
+
+    public void setSenTime(Date senTime) {
+        this.senTime = senTime;
+    }
+
+    public Msg(String content, int type, String bluetoothAdd) {
         this.content = content;
         this.type = type;
         this.bluetoothAdd = bluetoothAdd;
+    }
+
+    public String getSendUuid() {
+        return sendUuid;
+    }
+
+    public void setSendUuid(String sendUuid) {
+        this.sendUuid = sendUuid;
     }
 
     public String getBluetoothName() {
@@ -70,8 +95,11 @@ public class Msg  implements Comparable<Msg>{
     public String toString() {
         return "Msg{" +
                 "bluetoothAdd='" + bluetoothAdd + '\'' +
+                ", bluetoothName='" + bluetoothName + '\'' +
                 ", content='" + content + '\'' +
                 ", type=" + type +
+                ", sendUuid='" + sendUuid + '\'' +
+                ", senTime=" + senTime +
                 ", stateType=" + stateType +
                 '}';
     }

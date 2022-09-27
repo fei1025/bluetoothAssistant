@@ -26,7 +26,6 @@ public class BaseActivity extends AppCompatActivity {
         list.add(Manifest.permission.BLUETOOTH_ADMIN);
         list.add(Manifest.permission.BLUETOOTH);
         mPermissionListnew= list.toArray(new String[0]);
-
     }
     @Override
     protected void onCreate(Bundle savedInstanceState) {

@@ -17,6 +17,8 @@ public class StaticObject {
     public static BluetoothEvent bluetoothEvent = new BluetoothEvent();
     //本机蓝牙名字
     public static String myBluetoothName ;
+    //本机地址
+    public static String myBluetoothAdd;
 
 
 }

@@ -104,7 +104,7 @@ public class BluetoothObject  extends EventDispatcher {
                 insecureRfcommSocketToServiceRecord = bluetoothDevice.createInsecureRfcommSocketToServiceRecord(UUID.fromString(SPP_UUID));
                 insecureRfcommSocketToServiceRecord.connect();
                 BluetoothServiceConnect bluetoothServiceConnect = new BluetoothServiceConnect();
-                bluetoothServiceConnect.start(mcontex,insecureRfcommSocketToServiceRecord);
+                bluetoothServiceConnect.start(mcontex,insecureRfcommSocketToServiceRecord,SPP_UUID);
                 connectStart = true;
                 Intent liaoTian = new Intent(mcontex, Liao_tian.class);
                 String name = bluetoothDevice.getName();
@@ -113,6 +113,7 @@ public class BluetoothObject  extends EventDispatcher {
                 }
                 liaoTian.putExtra("bluetoothName",name);
                 liaoTian.putExtra("bluetoothAdd",bluetoothDevice.getAddress());
+                liaoTian.putExtra("bluetoothUUid",SPP_UUID);
                 mcontex.startActivity(liaoTian);
             } catch (Exception e) {
                 WeiboDialogUtils.closeDialog(loadingDialog);

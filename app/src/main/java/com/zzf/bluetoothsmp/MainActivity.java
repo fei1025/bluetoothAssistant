@@ -1,6 +1,8 @@
 package com.zzf.bluetoothsmp;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
+import android.app.Dialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
@@ -10,6 +12,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.os.Build;
 import android.os.Bundle;
@@ -23,7 +26,9 @@ import android.view.View;
 import com.example.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.customAdapter.FruitAdapter;
 import com.zzf.bluetoothsmp.entity.Msg;
+import com.zzf.bluetoothsmp.loading.WeiboDialogUtils;
 import com.zzf.bluetoothsmp.utils.CheckUpdate;
+import com.zzf.bluetoothsmp.utils.MonitorMessage;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
 
 import java.lang.reflect.InvocationTargetException;
@@ -56,6 +61,7 @@ public class MainActivity extends BaseActivity {
     private final int mOpenCode = 0x01;
     public int scan = 1;
     private SwipeRefreshLayout swipeRefresh;
+    private boolean isCreate = false;
 
 
     @SuppressLint("ResourceAsColor")
@@ -76,6 +82,8 @@ public class MainActivity extends BaseActivity {
         mRecyclerView.setLayoutManager(layoutManager);
         mRecyclerView.setAdapter(adapter);
         mRecyclerView.setVisibility(View.GONE);
+        //监听数据
+        new MonitorMessage().MonitorAndSaveMse();
         //下拉刷新
         swipeRefresh = findViewById(R.id.swipe_refresh);
         swipeRefresh.setColorSchemeColors(com.google.android.material.R.color.design_default_color_primary);
@@ -101,6 +109,7 @@ public class MainActivity extends BaseActivity {
             }
         });
         cratePermission();
+        isCreate = true;
         //申请用户权限
         ActivityCompat.requestPermissions(MainActivity.this, mPermissionListnew, mOpenCode);
 
@@ -150,7 +159,24 @@ public class MainActivity extends BaseActivity {
 
     public void onStart() {
         super.onStart();
-        initBluetooth();
+        if (!isCreate) {
+            adapter.setOnItemClickListener(new FruitAdapter.onItemDeleteListener() {
+                @Override
+                public void OnItemClick(int i) {
+                    bluetoothObject = new BluetoothObject();
+                    Fruit fruit = fruitList.get(i);
+                    BluetoothDevice bluetoothDevice = fruit.getBluetoothDevice();
+                    bluetoothObject.setBluetoothDevice(bluetoothDevice);
+                    try {
+                        bluetoothObject.connect(MainActivity.this, mHandler);
+                    } catch (Exception e) {
+                        ToastUtil.toastWord(MainActivity.this, getString(R.string.connect_fails));
+                        e.printStackTrace();
+                    }
+                }
+            });
+            initBluetooth();
+        }
     }
 
     public void onRestart() {
@@ -169,6 +195,7 @@ public class MainActivity extends BaseActivity {
         mRecyclerView.setAdapter(adapter);
         //注销蓝牙设备搜索的广播接收器
         unregisterReceiver(discoveryReceiver);
+        isCreate = false;
     }
 
     public void onResume() {
@@ -211,10 +238,42 @@ public class MainActivity extends BaseActivity {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        for (int i = 0; i < permissions.length; i++) {
+            Log.d(TAG, "onRequestPermissionsResult: " + permissions[i] + ":" + grantResults[i]);
+        }
+
 
         for (Integer permission : grantResults) {
             if (permission != 0) {
                 SystemExit("未获取运行权限");
+                return;
+            }
+        }
+        //从系统服务中获取蓝牙管理器
+        if (mBluetooth == null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                //从系统服务中获取蓝牙管理器
+                BluetoothManager bm = getSystemService(BluetoothManager.class);
+                mBluetooth = bm.getAdapter();
+            } else {
+                //获取系统默认的蓝牙适配器
+                mBluetooth = BluetoothAdapter.getDefaultAdapter();
+            }
+            if (mBluetooth == null) {
+                SystemExit(getString(R.string.BluetoothNotFound));
+                return;
+            }
+        }
+        //蓝牙服务未启动
+        if (!mBluetooth.isEnabled()) {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                SystemExit("请启动蓝牙后重试");
+                return;
+            }
+            boolean enable = mBluetooth.enable();
+            if (!enable) {
+                SystemExit(getString(R.string.initBluetooth));
+                return;
             }
         }
 
@@ -253,35 +312,16 @@ public class MainActivity extends BaseActivity {
         }
     }
 
-    @SuppressLint("MissingPermission")
+    @SuppressLint({"MissingPermission", "HardwareIds"})
     private void initBluetooth() {
-        //从系统服务中获取蓝牙管理器
-        if (mBluetooth == null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                //从系统服务中获取蓝牙管理器
-                BluetoothManager bm = getSystemService(BluetoothManager.class);
-                mBluetooth = bm.getAdapter();
-            } else {
-                //获取系统默认的蓝牙适配器
-                mBluetooth = BluetoothAdapter.getDefaultAdapter();
-            }
-            if (mBluetooth == null) {
-                SystemExit(getString(R.string.BluetoothNotFound));
-            }
-        }
-        //蓝牙服务未启动
-        if (!mBluetooth.isEnabled()) {
-            //启动服务
-            boolean enable = mBluetooth.enable();
-            if (!enable) {
-                SystemExit(getString(R.string.initBluetooth));
-            }
-        }
+
         if (mBluetooth.getName() != null && mBluetooth.getName().length() > 0) {
             StaticObject.myBluetoothName = mBluetooth.getName();
         } else {
             StaticObject.myBluetoothName = mBluetooth.getAddress();
         }
+        StaticObject.myBluetoothAdd = mBluetooth.getAddress();
+
         Set<BluetoothDevice> bondedDevices = mBluetooth.getBondedDevices();
 
         if (bondedDevices != null && bondedDevices.size() != 0) {
@@ -340,7 +380,7 @@ public class MainActivity extends BaseActivity {
                     //发现新的蓝牙设备
                     if (!fruitList.contains(fruit)) {
                         fruit.setName(device.getName());
-                        if(fruit.getName() ==null ||fruit.getName().length()==0){
+                        if (fruit.getName() == null || fruit.getName().length() == 0) {
                             fruit.setName("N/A");
                         }
                         fruit.setState(bondState);
@@ -351,7 +391,11 @@ public class MainActivity extends BaseActivity {
                         fruitList.add(fruit);
                         mRecyclerView.setAdapter(adapter);
                         mRecyclerView.setVisibility(View.VISIBLE);
-
+                    } else {
+                        fruit.setState(bondState);
+                        short rssi = intent.getExtras().getShort(BluetoothDevice.EXTRA_RSSI);
+                        fruit.setRssi(rssi + "");
+                        adapter.notifyDataSetChanged();
                     }
                     break;
                 //蓝牙状态修改
@@ -423,8 +467,7 @@ public class MainActivity extends BaseActivity {
                 System.exit(0);
             }
         });
-
-        dialog.show();
+        dialog.create().show();
     }
 
     @Override

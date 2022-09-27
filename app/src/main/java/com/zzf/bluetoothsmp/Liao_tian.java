@@ -18,9 +18,13 @@ import com.example.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.customAdapter.MsgAdapter;
 import com.zzf.bluetoothsmp.entity.Msg;
 import com.zzf.bluetoothsmp.event.BluetoothType;
+import com.zzf.bluetoothsmp.entity.MessageMapper;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
 
+import org.litepal.LitePal;
+
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
@@ -41,6 +45,7 @@ public class Liao_tian extends AppCompatActivity {
     private String bluetoothAdd;
     private String UUID;
     String bluetoothName;
+    String bluetoothUUid;
 
     public Handler mHandler = new Handler(Looper.getMainLooper()) {
         @Override
@@ -53,9 +58,8 @@ public class Liao_tian extends AppCompatActivity {
                     msgRecyclerView.scrollToPosition(msgList.size() - 1);
                     break;
                 case 1:
-                    StaticObject.bluetoothEvent.deleteAllEventByUuid(UUID);
                     ToastUtil.toastWord(Liao_tian.this, Liao_tian.this.getString(ConnectTheInterrupt));
-                    finish();
+                    exit();
                     break;
                 default:
                     Log.e(TAG, "Unknown msg " + msg.what);
@@ -72,7 +76,8 @@ public class Liao_tian extends AppCompatActivity {
         setContentView(R.layout.activity_liao_tian);
         Toolbar toolbar = findViewById(R.id.lao_tian_toolbar);
          bluetoothName = getIntent().getStringExtra("bluetoothName");
-        bluetoothAdd = getIntent().getStringExtra("bluetoothAdd");
+         bluetoothAdd = getIntent().getStringExtra("bluetoothAdd");
+         bluetoothUUid = getIntent().getStringExtra("bluetoothUUid");
         if(bluetoothName ==null || bluetoothName.length()==0){
             bluetoothName="无";
         }
@@ -83,6 +88,7 @@ public class Liao_tian extends AppCompatActivity {
         msgRecyclerView = findViewById(R.id.msg_recycler_view);
         LinearLayoutManager linearLayout = new LinearLayoutManager(this);
         msgRecyclerView.setLayoutManager(linearLayout);
+        initMsg();
         MsgAdapter adapter = new MsgAdapter(msgList);
         msgRecyclerView.setAdapter(adapter);
         //监听按钮发送事件
@@ -93,6 +99,9 @@ public class Liao_tian extends AppCompatActivity {
                 if (!"".equals(s)) {
                     Msg eventDatum = new Msg(s, Msg.TYPE_SENT, bluetoothAdd);
                     try {
+                        eventDatum.setBluetoothName(bluetoothName);
+                        eventDatum.setBluetoothAdd(bluetoothAdd);
+                        eventDatum.setSendUuid(bluetoothUUid);
                         StaticObject.mTaskQueue.put(eventDatum);
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -105,7 +114,6 @@ public class Liao_tian extends AppCompatActivity {
         StaticObject.bluetoothEvent.addEventListener(BluetoothType.RECEIVE, l -> {
             Msg msg = (Msg) l.getEventData()[0];
             if (bluetoothAdd.equals(msg.getBluetoothAdd())) {
-                msg.setBluetoothName(bluetoothName);
                 senHandlerMsg(0, msg);
             }
         }, UUID);
@@ -114,7 +122,6 @@ public class Liao_tian extends AppCompatActivity {
             Msg msg = (Msg) l.getEventData()[0];
             Log.d(TAG, "onCreate: " + msg.toString());
             if (bluetoothAdd.equals(msg.getBluetoothAdd())) {
-                msg.setBluetoothName(bluetoothName);
                 senHandlerMsg(0, msg);
             }
         }, UUID);
@@ -150,6 +157,21 @@ public class Liao_tian extends AppCompatActivity {
             return super.onKeyDown(keyCode, event);
         }
     }
+    public void initMsg(){
+        List<MessageMapper> messageList = LitePal.where("receiveAdd = ? and sendAdd =?",StaticObject.myBluetoothAdd,bluetoothAdd).order("sendTime ").find(MessageMapper.class);
+        if(messageList !=null && messageList.size() !=0 ){
+            for (MessageMapper ms: messageList){
+
+                Msg m = new Msg(ms.getMessage(),ms.getType(),ms.getReceiveAdd());
+                if(Msg.TYPE_RECEIVED==ms.getType()){
+                    m.setBluetoothName(ms.getSendName());
+                }else {
+                    m.setBluetoothName(ms.getReceiveName());
+                } 
+                msgList.add(m);
+            }
+        }
+    }
 
     public void dialog(){
         AlertDialog.Builder dialog = new AlertDialog.Builder(Liao_tian.this);
@@ -159,21 +181,24 @@ public class Liao_tian extends AppCompatActivity {
         dialog.setPositiveButton("确定", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
-                BluetoothServiceConnect remove = StaticObject.bluetoothSocketMap.remove(bluetoothAdd);
-                if (remove != null) {
-                    remove.close();
-                }
-                finish();
-
+                exit();
             }
         });
         dialog.setNegativeButton("取消", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
-
             }
         });
         dialog.show();
+    }
+
+    public void exit(){
+        StaticObject.bluetoothEvent.deleteAllEventByUuid(UUID);
+        BluetoothServiceConnect remove = StaticObject.bluetoothSocketMap.remove(bluetoothAdd);
+        if (remove != null) {
+            remove.close();
+        }
+        finish();
     }
 
 

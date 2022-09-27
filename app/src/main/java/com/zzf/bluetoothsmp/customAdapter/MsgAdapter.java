@@ -1,6 +1,7 @@
 package com.zzf.bluetoothsmp.customAdapter;
 
 import android.graphics.Bitmap;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -25,7 +26,8 @@ public class MsgAdapter extends RecyclerView.Adapter<MsgAdapter.ViewHolder> {
 
     public MsgAdapter(List<Msg> msgList) {
         MsgList = msgList;
-
+        myBitmap=null;
+        outBitmap=null;
     }
 
 
@@ -44,7 +46,11 @@ public class MsgAdapter extends RecyclerView.Adapter<MsgAdapter.ViewHolder> {
             holder.right_layout.setVisibility(View.GONE);
             holder.left_msg.setText(msg.getContent());
             if (outBitmap == null) {
-                outBitmap = ImageUtils.defaultAvatar(msg.getBluetoothName());
+                String bluetoothName = msg.getBluetoothName();
+                if(bluetoothName == null || bluetoothName.length() ==0){
+                    bluetoothName=msg.getBluetoothAdd();
+                }
+                outBitmap = ImageUtils.defaultAvatar(bluetoothName);
             }
             holder.left_img.setImageBitmap(outBitmap);
         } else if (msg.getType() == Msg.TYPE_SENT) {

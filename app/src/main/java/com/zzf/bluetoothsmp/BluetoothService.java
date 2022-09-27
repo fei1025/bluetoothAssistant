@@ -26,7 +26,7 @@ public class BluetoothService implements BluetoothBase {
                     while (true){
                         BluetoothSocket accept = bluetoothService.accept();
                         BluetoothServiceConnect bluetoothServiceConnect = new BluetoothServiceConnect();
-                        bluetoothServiceConnect.start(mcontex, accept);
+                        bluetoothServiceConnect.start(mcontex, accept,BluetoothObject.SPP_UUID);
                         Intent liaoTian = new Intent(mcontex, Liao_tian.class);
                         BluetoothDevice bluetoothDevice = accept.getRemoteDevice();
                         String name = bluetoothDevice.getName();
@@ -35,12 +35,12 @@ public class BluetoothService implements BluetoothBase {
                         }
                         liaoTian.putExtra("bluetoothName",name);
                         liaoTian.putExtra("bluetoothAdd",bluetoothDevice.getAddress());
+                        liaoTian.putExtra("bluetoothUUid",BluetoothObject.SPP_UUID);
                         mcontex.startActivity(liaoTian);
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
-
             }
         }).start();
     }

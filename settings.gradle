@@ -3,8 +3,6 @@ pluginManagement {
         gradlePluginPortal()
         google()
         mavenCentral()
-        maven { url 'https://jitpack.io' }
-
     }
 }
 dependencyResolutionManagement {
@@ -13,7 +11,7 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url 'https://jitpack.io' }
-
+        jcenter { url 'https://maven.aliyun.com/repository/public' }
     }
 }
 rootProject.name = "BluetoothSMP"

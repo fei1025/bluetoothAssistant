@@ -9,6 +9,7 @@ import com.zzf.bluetoothsmp.event.BluetoothType;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
@@ -19,24 +20,27 @@ public class BluetoothServiceConnect {
     private String bluetoothName;
     private String bluetoothAdd;
     private String UUid;
+    private String senUuid;
 
 
     @SuppressLint("MissingPermission")
-    public void start(Context context, BluetoothSocket bluetoothSocket ) {
+    public void start(Context context, BluetoothSocket bluetoothSocket, String senUuid) {
         if (bluetoothSocket == null) {
             return;
         }
-        UUid= UUID.randomUUID().toString();
+        UUid = UUID.randomUUID().toString();
+        this.senUuid = senUuid;
         try {
             this.bluetoothSocket = bluetoothSocket;
             this.bufferedOutputStream = new BufferedOutputStream(bluetoothSocket.getOutputStream());
             this.bufferedInputStream = new BufferedInputStream(bluetoothSocket.getInputStream());
             bluetoothName = bluetoothSocket.getRemoteDevice().getName();
-            bluetoothAdd=bluetoothSocket.getRemoteDevice().getAddress();
+            bluetoothAdd = bluetoothSocket.getRemoteDevice().getAddress();
             BluetoothServiceConnect bluetoothServiceConnect = StaticObject.bluetoothSocketMap.get(bluetoothSocket.getRemoteDevice().getAddress());
-            if(bluetoothServiceConnect !=null ){
+            if (bluetoothServiceConnect != null) {
                 return;
             }
+            //senUuid=bluetoothSocket.getRemoteDevice().getUuids();
             StaticObject.bluetoothSocketMap.put(bluetoothSocket.getRemoteDevice().getAddress(), this);
             receiveMsg.start();
             //监听发送数据事件
@@ -51,7 +55,7 @@ public class BluetoothServiceConnect {
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
-            },"");
+            }, "");
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -67,7 +71,9 @@ public class BluetoothServiceConnect {
                 try {
                     while (!Thread.currentThread().isInterrupted() && ((readLine = bufferedInputStream.read(buf)) != -1)) {
                         String info = new String(buf, 0, readLine);
-                        Msg m = new Msg(info, Msg.TYPE_RECEIVED,bluetoothAdd);
+                        Msg m = new Msg(info, Msg.TYPE_RECEIVED, bluetoothAdd);
+                        m.setSendUuid(senUuid);
+                        m.setBluetoothName(bluetoothName);
                         StaticObject.mTaskQueue.put(m);
                     }
                 } catch (Exception e) {
@@ -75,8 +81,8 @@ public class BluetoothServiceConnect {
                     m.setStateType(1);
                     try {
                         StaticObject.mTaskQueue.put(m);
-                    } catch (InterruptedException interruptedException) {
-                        interruptedException.printStackTrace();
+                    } catch (Exception interruptedException) {
+                        e.printStackTrace();
                     }
                     close();
                     e.printStackTrace();
@@ -88,22 +94,34 @@ public class BluetoothServiceConnect {
 
 
     public void close() {
-        try {
-            StaticObject.bluetoothEvent.deleteAllEventByUuid(UUid);
-            receiveMsg.interrupt();
-            if (bufferedOutputStream != null) {
-                bufferedOutputStream.close();
-            }
-            if (bufferedInputStream != null) {
-                bufferedInputStream.close();
-            }
-            if (bluetoothSocket != null) {
-                bluetoothSocket.close();
-            }
 
-        } catch (Exception e) {
-            e.printStackTrace();
+        StaticObject.bluetoothEvent.deleteAllEventByUuid(UUid);
+
+        if (bufferedOutputStream != null) {
+            try {
+                bufferedOutputStream.close();
+
+            } catch (Exception e) {
+                e.printStackTrace();
+
+            }
         }
+        if (bufferedInputStream != null) {
+            try {
+                bufferedInputStream.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        if (bluetoothSocket != null) {
+            try {
+                bluetoothSocket.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        receiveMsg.interrupt();
+
     }
 
 

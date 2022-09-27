@@ -14,7 +14,9 @@ public class ImageUtils {
 
 
     public static Bitmap defaultAvatar(String name) {
-        Log.d("ImageUtils", "defaultAvatar:2222222222222222222222222 "+name);
+        if(name ==null || name.length()==0){
+            name="空";
+        }
         BitmapDrawable build = new AvatarGenerator.AvatarBuilder(MyApplication.getContext())
                 .setLabel(name)
                 .setAvatarSize(120)
