@@ -91,7 +91,7 @@ public class Liao_tian extends AppCompatActivity {
         initMsg();
         MsgAdapter adapter = new MsgAdapter(msgList);
         msgRecyclerView.setAdapter(adapter);
-        //监听按钮发送事件
+
         send.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {

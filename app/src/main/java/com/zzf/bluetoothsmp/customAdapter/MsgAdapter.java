@@ -11,8 +11,12 @@ import android.widget.TextView;
 
 import com.example.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.StaticObject;
+import com.zzf.bluetoothsmp.entity.BluetoothDrive;
+import com.zzf.bluetoothsmp.entity.MessageMapper;
 import com.zzf.bluetoothsmp.entity.Msg;
 import com.zzf.bluetoothsmp.utils.ImageUtils;
+
+import org.litepal.LitePal;
 
 import java.util.List;
 
@@ -51,6 +55,19 @@ public class MsgAdapter extends RecyclerView.Adapter<MsgAdapter.ViewHolder> {
                     bluetoothName=msg.getBluetoothAdd();
                 }
                 outBitmap = ImageUtils.defaultAvatar(bluetoothName);
+                BluetoothDrive messageList = LitePal.where("driveAdd = ? ",msg.getBluetoothAdd()).findFirst(BluetoothDrive.class);
+                if(messageList == null ){
+                    BluetoothDrive bluetoothDrive=new BluetoothDrive();
+                    bluetoothDrive.setDriveAdd(msg.getBluetoothAdd());
+                    bluetoothDrive.setDriveName(msg.getBluetoothName());
+                    bluetoothDrive.setSystemImg(outBitmap);
+                    bluetoothDrive.save();
+                }else {
+                    if(!messageList.getDriveName().equals(bluetoothName)){
+                        messageList.setDriveName(bluetoothName);
+                        messageList.save();
+                    }
+                }
             }
             holder.left_img.setImageBitmap(outBitmap);
         } else if (msg.getType() == Msg.TYPE_SENT) {

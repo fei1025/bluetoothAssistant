@@ -1,9 +1,12 @@
 package com.zzf.bluetoothsmp.utils;
 
 import com.zzf.bluetoothsmp.StaticObject;
+import com.zzf.bluetoothsmp.entity.BluetoothDrive;
 import com.zzf.bluetoothsmp.entity.Msg;
 import com.zzf.bluetoothsmp.event.BluetoothType;
 import com.zzf.bluetoothsmp.entity.MessageMapper;
+
+import org.litepal.LitePal;
 
 public class MonitorMessage {
 
@@ -38,6 +41,21 @@ public class MonitorMessage {
             messageMapper.setReceiveAdd(StaticObject.myBluetoothAdd);
             messageMapper.setType(Msg.TYPE_SENT);
             messageMapper.save();
+
+
         }, UUID);
+        StaticObject.bluetoothEvent.addEventListener(BluetoothType.All_MSG,l->{
+            Msg msg = (Msg) l.getEventData()[0];
+            saveMsg(msg);
+        },UUID);
+    }
+
+
+
+    public synchronized void  saveMsg(Msg msg){
+        BluetoothDrive messageList = LitePal.where("driveAdd = ? ",msg.getBluetoothAdd()).findFirst(BluetoothDrive.class);
+        messageList.setLastReceiveMsg(msg.getContent());
+        messageList.setSenDate(msg.getSenTime());
+        messageList.save();
     }
 }

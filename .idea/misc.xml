@@ -14,14 +14,20 @@
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/drawable/ic_gengduotianchong.xml" value="0.316" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/drawable/ic_launcher_background.xml" value="0.3755" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/drawable/ic_launcher_foreground.xml" value="0.3755" />
+        <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/activity_home.xml" value="0.375" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/activity_lian_tian_main.xml" value="0.4125905797101449" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/activity_liao_tian.xml" value="0.4125905797101449" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/activity_main.xml" value="0.2692502532928065" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/dialog_loading.xml" value="0.4125905797101449" />
+        <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/fragment_dashboard.xml" value="0.5536458333333333" />
+        <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/fragment_home.xml" value="0.375" />
+        <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/fragment_notifications.xml" value="0.5536458333333333" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/fruit_item.xml" value="0.4125905797101449" />
+        <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/info_item.xml" value="0.31302083333333336" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/loading.xml" value="0.4125905797101449" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/msg_item.xml" value="0.5" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/layout/title.xml" value="0.31302083333333336" />
+        <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/menu/bottom_nav_menu.xml" value="0.375" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/menu/liao_tian.xml" value="0.5536458333333333" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml" value="0.4915" />
         <entry key="..\:/AndroidProject/BluetoothSMP/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml" value="0.4915" />

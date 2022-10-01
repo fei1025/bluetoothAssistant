@@ -6,5 +6,6 @@
 
     <list>
         <mapping class="com.zzf.bluetoothsmp.entity.MessageMapper"/>
+        <mapping class="com.zzf.bluetoothsmp.entity.BluetoothDrive"/>
     </list>
 </litepal>

@@ -2,18 +2,15 @@ package com.zzf.bluetoothsmp;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
-import android.app.Dialog;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
-import android.bluetooth.le.BluetoothLeAdvertiser;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
-import android.content.res.Configuration;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -21,31 +18,28 @@ import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
 import android.view.KeyEvent;
-import android.view.View;
 
 import com.example.bluetoothsmp.R;
-import com.zzf.bluetoothsmp.customAdapter.FruitAdapter;
+import com.example.bluetoothsmp.databinding.ActivityHomeBinding;
+import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.zzf.bluetoothsmp.entity.Msg;
-import com.zzf.bluetoothsmp.loading.WeiboDialogUtils;
 import com.zzf.bluetoothsmp.utils.CheckUpdate;
 import com.zzf.bluetoothsmp.utils.MonitorMessage;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
 
-import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatDelegate;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.ActivityCompat;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
+import androidx.navigation.NavController;
+import androidx.navigation.Navigation;
+import androidx.navigation.ui.AppBarConfiguration;
+import androidx.navigation.ui.NavigationUI;
 
 import static com.example.bluetoothsmp.R.string.ConnectTheInterrupt;
 
@@ -53,15 +47,17 @@ public class MainActivity extends BaseActivity {
 
     private final Handler handler = new Handler();
     private BluetoothAdapter mBluetooth;
-    RecyclerView mRecyclerView;
-    public BluetoothObject bluetoothObject;
+
+    //public BluetoothObject bluetoothObject;
     private final List<Fruit> fruitList = new ArrayList<>();
-    FruitAdapter adapter;
     private static final String TAG = "MainActivity";
     private final int mOpenCode = 0x01;
     public int scan = 1;
-    private SwipeRefreshLayout swipeRefresh;
+    //private SwipeRefreshLayout swipeRefresh;
     private boolean isCreate = false;
+    private ActivityHomeBinding binding;
+    private OnActivityDataChangedListener onActivityDataChangedListener;
+
 
 
     @SuppressLint("ResourceAsColor")
@@ -69,45 +65,27 @@ public class MainActivity extends BaseActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
         new CheckUpdate().check(MainActivity.this);
         // 设置title
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
-        mRecyclerView = findViewById(R.id.card_list);
-        adapter = new FruitAdapter(fruitList);
-        //设置大小固定
-        // 说明 https://www.jianshu.com/p/582e88ee6aad/
-        mRecyclerView.setHasFixedSize(true);
-        LinearLayoutManager layoutManager = new LinearLayoutManager(this);
-        mRecyclerView.setLayoutManager(layoutManager);
-        mRecyclerView.setAdapter(adapter);
-        mRecyclerView.setVisibility(View.GONE);
-        //监听数据
+
+        binding = ActivityHomeBinding.inflate(getLayoutInflater());
+        setContentView(binding.getRoot());
+
+        BottomNavigationView navView = findViewById(R.id.nav_view);
+        // Passing each menu ID as a set of Ids because each
+        // menu should be considered as top level destinations.
+        AppBarConfiguration appBarConfiguration = new AppBarConfiguration.Builder(
+                R.id.navigation_home, R.id.navigation_dashboard)
+                .build();
+        NavController navController = Navigation.findNavController(this, R.id.nav_host_fragment_activity_home);
+        NavigationUI.setupActionBarWithNavController(this, navController, appBarConfiguration);
+        NavigationUI.setupWithNavController(binding.navView, navController);
+
         new MonitorMessage().MonitorAndSaveMse();
-        //下拉刷新
-        swipeRefresh = findViewById(R.id.swipe_refresh);
-        swipeRefresh.setColorSchemeColors(com.google.android.material.R.color.design_default_color_primary);
-        swipeRefresh.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
-            @Override
-            public void onRefresh() {
-                refreshFruits();
-            }
-        });
-        adapter.setOnItemClickListener(new FruitAdapter.onItemDeleteListener() {
-            @Override
-            public void OnItemClick(int i) {
-                bluetoothObject = new BluetoothObject();
-                Fruit fruit = fruitList.get(i);
-                BluetoothDevice bluetoothDevice = fruit.getBluetoothDevice();
-                bluetoothObject.setBluetoothDevice(bluetoothDevice);
-                try {
-                    bluetoothObject.connect(MainActivity.this, mHandler);
-                } catch (Exception e) {
-                    ToastUtil.toastWord(MainActivity.this, getString(R.string.connect_fails));
-                    e.printStackTrace();
-                }
-            }
-        });
+
         cratePermission();
         isCreate = true;
         //申请用户权限
@@ -141,14 +119,14 @@ public class MainActivity extends BaseActivity {
                         fruitList.clear();
                         unregisterReceiver(discoveryReceiver);
                         initBluetooth();
-                        adapter = new FruitAdapter(fruitList);
-                        mRecyclerView.setAdapter(adapter);
+                        // adapter = new FruitAdapter(fruitList);
+                        //  mRecyclerView.setAdapter(adapter);
                         try {
                             Thread.sleep(2000);
                         } catch (InterruptedException e) {
                             e.printStackTrace();
                         }
-                        swipeRefresh.setRefreshing(false);
+                        //  swipeRefresh.setRefreshing(false);
                         //adapter.notifyDataSetChanged();
                     }
                 });
@@ -159,7 +137,7 @@ public class MainActivity extends BaseActivity {
 
     public void onStart() {
         super.onStart();
-        if (!isCreate) {
+  /*      if (!isCreate) {
             adapter.setOnItemClickListener(new FruitAdapter.onItemDeleteListener() {
                 @Override
                 public void OnItemClick(int i) {
@@ -176,7 +154,7 @@ public class MainActivity extends BaseActivity {
                 }
             });
             initBluetooth();
-        }
+        }*/
     }
 
     public void onRestart() {
@@ -191,8 +169,8 @@ public class MainActivity extends BaseActivity {
     public void onStop() {
         super.onStop();
         fruitList.clear();
-        adapter = new FruitAdapter(fruitList);
-        mRecyclerView.setAdapter(adapter);
+        //adapter = new FruitAdapter(fruitList);
+        // mRecyclerView.setAdapter(adapter);
         //注销蓝牙设备搜索的广播接收器
         unregisterReceiver(discoveryReceiver);
         isCreate = false;
@@ -231,6 +209,13 @@ public class MainActivity extends BaseActivity {
             }
         }
     });
+    public interface OnActivityDataChangedListener {
+        void addFruitData(Fruit string);
+    }
+    public void setOnActivityDataChangedListener(OnActivityDataChangedListener addFruitData) {
+        this.onActivityDataChangedListener = addFruitData;
+    }
+
 
 
     // 权限回调
@@ -313,7 +298,7 @@ public class MainActivity extends BaseActivity {
     }
 
     @SuppressLint({"MissingPermission", "HardwareIds"})
-    private void initBluetooth() {
+    public void initBluetooth() {
 
         if (mBluetooth.getName() != null && mBluetooth.getName().length() > 0) {
             StaticObject.myBluetoothName = mBluetooth.getName();
@@ -326,27 +311,19 @@ public class MainActivity extends BaseActivity {
 
         if (bondedDevices != null && bondedDevices.size() != 0) {
             for (BluetoothDevice device : bondedDevices) {
-     /*           boolean isConnect = false;
-                try {
-                    //获取当前连接的蓝牙信息
-                    isConnect = (boolean) device.getClass().getMethod("isConnected").invoke(device);
-                } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
-                    e.printStackTrace();
-                }*/
                 Fruit fruit = new Fruit();
                 fruit.setAddress(device.getAddress());
                 if (!fruitList.contains(fruit)) {
                     fruit.setName(device.getName());
-                    //fruit.setRssi(isConnect+"");
                     fruit.setState(device.getBondState());
                     fruit.setBluetoothType(device.getType());
                     fruit.setBluetoothDevice(device);
                     fruitList.add(fruit);
+                    onActivityDataChangedListener.addFruitData(fruit);
+
                 }
             }
         }
-
-
         //需要过滤多个动作，则调用IntentFilter对象的addAction添加新动作
         IntentFilter discoveryFilter = new IntentFilter();
         //获取新的数据
@@ -375,54 +352,46 @@ public class MainActivity extends BaseActivity {
             int bondState = device.getBondState();
             Fruit fruit = new Fruit();
             fruit.setAddress(device.getAddress());
+
+            //发现新的蓝牙设备
+            fruit.setName(device.getName());
+            if (fruit.getName() == null || fruit.getName().length() == 0) {
+                fruit.setName("N/A");
+            }
+            fruit.setState(bondState);
+            fruit.setBluetoothType(device.getType());
+            short rssi = intent.getExtras().getShort(BluetoothDevice.EXTRA_RSSI);
+            fruit.setRssi(rssi + "");
+            fruit.setBluetoothDevice(device);
+            onActivityDataChangedListener.addFruitData(fruit);
+
             switch (action) {
                 case BluetoothDevice.ACTION_FOUND:
-                    //发现新的蓝牙设备
-                    if (!fruitList.contains(fruit)) {
-                        fruit.setName(device.getName());
-                        if (fruit.getName() == null || fruit.getName().length() == 0) {
-                            fruit.setName("N/A");
-                        }
-                        fruit.setState(bondState);
-                        fruit.setBluetoothType(device.getType());
-                        short rssi = intent.getExtras().getShort(BluetoothDevice.EXTRA_RSSI);
-                        fruit.setRssi(rssi + "");
-                        fruit.setBluetoothDevice(device);
-                        fruitList.add(fruit);
-                        mRecyclerView.setAdapter(adapter);
-                        mRecyclerView.setVisibility(View.VISIBLE);
-                    } else {
-                        fruit.setState(bondState);
-                        short rssi = intent.getExtras().getShort(BluetoothDevice.EXTRA_RSSI);
-                        fruit.setRssi(rssi + "");
-                        adapter.notifyDataSetChanged();
-                    }
                     break;
                 //蓝牙状态修改
                 //断开蓝牙连接
                 case BluetoothDevice.ACTION_ACL_DISCONNECTED:
                 case BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED:
-                    if (bluetoothObject != null) {
-                        BluetoothServiceConnect remove = StaticObject.bluetoothSocketMap.remove(device.getAddress());
-                        if (remove != null) {
-                            ToastUtil.toastWord(MainActivity.this, MainActivity.this.getString(ConnectTheInterrupt));
-                            remove.close();
-                            Msg m = new Msg(device.getAddress());
-                            m.setStateType(1);
-                            try {
-                                StaticObject.mTaskQueue.put(m);
-                            } catch (InterruptedException e) {
-                                e.printStackTrace();
-                            }
+                    BluetoothServiceConnect remove = StaticObject.bluetoothSocketMap.remove(device.getAddress());
+                    if (remove != null) {
+                        ToastUtil.toastWord(MainActivity.this, MainActivity.this.getString(ConnectTheInterrupt));
+                        remove.close();
+                        Msg m = new Msg(device.getAddress());
+                        m.setStateType(1);
+                        try {
+                            StaticObject.mTaskQueue.put(m);
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
                         }
                     }
                     //蓝牙状态修改
                 case BluetoothDevice.ACTION_ACL_CONNECTED:
                 case BluetoothDevice.ACTION_BOND_STATE_CHANGED:
-                    fruit.setState(bondState);
+/*                    fruit.setState(bondState);
                     short rssi = intent.getExtras().getShort(BluetoothDevice.EXTRA_RSSI);
                     fruit.setRssi(rssi + "");
-                    adapter.notifyDataSetChanged();
+                    onActivityDataChangedListener.addFruitData(fruit);*/
+                    //adapter.notifyDataSetChanged();
                     break;
             }
         }

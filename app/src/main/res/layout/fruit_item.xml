@@ -2,12 +2,12 @@
 <RelativeLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:layout_height="wrap_content" android:layout_width="wrap_content">
+    android:layout_height="wrap_content"
+    android:layout_width="wrap_content">
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:layout_width="match_parent"
-        android:layout_height="90dp">
+        android:layout_height="wrap_content">
 
         <Button
             android:id="@+id/button_connect"
@@ -35,6 +35,7 @@
             android:id="@+id/tv_bluetoothTypeName"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_marginTop="5dp"
             android:layout_marginStart="8dp"
             android:layout_marginBottom="20dp"
             android:text="aaacc"
@@ -58,6 +59,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:layout_marginBottom="4dp"
+            android:layout_marginTop="5dp"
             android:text="aaa"
             android:textSize="12sp"
             app:layout_constraintBottom_toBottomOf="@+id/imageView"
@@ -88,7 +90,8 @@
             android:textStyle="bold"
             app:layout_constraintEnd_toStartOf="@id/button_connect"
             app:layout_constraintStart_toEndOf="@+id/imageView"
-            app:layout_constraintTop_toTopOf="@+id/imageView" />
+            app:layout_constraintTop_toTopOf="@+id/imageView"
+            />
 
 
     </androidx.constraintlayout.widget.ConstraintLayout>
