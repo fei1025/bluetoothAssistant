@@ -91,7 +91,8 @@ public class Liao_tian extends AppCompatActivity {
         initMsg();
         MsgAdapter adapter = new MsgAdapter(msgList);
         msgRecyclerView.setAdapter(adapter);
-
+        Objects.requireNonNull(msgRecyclerView.getAdapter()).notifyItemChanged(msgList.size() - 1);
+        msgRecyclerView.scrollToPosition(msgList.size() - 1);
         send.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -176,6 +177,7 @@ public class Liao_tian extends AppCompatActivity {
                 m.setSendUuid(ms.getSendUuid());
                 msgList.add(m);
             }
+
         }
     }
 
