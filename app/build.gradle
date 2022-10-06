@@ -9,8 +9,8 @@ android {
         applicationId "com.zzf.bluetoothsmp"
         minSdk 21
         targetSdk 32
-        versionCode 6
-        versionName "1.6"
+        versionCode 7
+        versionName "1.7"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -69,6 +69,9 @@ dependencies {
 
     //LitePal for Android 数据库操作
     implementation 'org.litepal.guolindev:core:3.2.3'
+    //侧滑删除效果
+    implementation 'com.github.mcxtzhang:SwipeDelMenuLayout:V1.2.1'
+
 
 
 }

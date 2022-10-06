@@ -49,7 +49,7 @@ public class MainActivity extends BaseActivity {
     private BluetoothAdapter mBluetooth;
 
     //public BluetoothObject bluetoothObject;
-    private final List<Fruit> fruitList = new ArrayList<>();
+    //private final List<Fruit> fruitList = new ArrayList<>();
     private static final String TAG = "MainActivity";
     private final int mOpenCode = 0x01;
     public int scan = 1;
@@ -107,54 +107,9 @@ public class MainActivity extends BaseActivity {
         }
     }*/
 
-    private void refreshFruits() {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-
-                runOnUiThread(new Runnable() {
-                    @SuppressLint("NotifyDataSetChanged")
-                    @Override
-                    public void run() {
-                        fruitList.clear();
-                        unregisterReceiver(discoveryReceiver);
-                        initBluetooth();
-                        // adapter = new FruitAdapter(fruitList);
-                        //  mRecyclerView.setAdapter(adapter);
-                        try {
-                            Thread.sleep(2000);
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
-                        //  swipeRefresh.setRefreshing(false);
-                        //adapter.notifyDataSetChanged();
-                    }
-                });
-            }
-        }).start();
-    }
-
-
     public void onStart() {
         super.onStart();
-  /*      if (!isCreate) {
-            adapter.setOnItemClickListener(new FruitAdapter.onItemDeleteListener() {
-                @Override
-                public void OnItemClick(int i) {
-                    bluetoothObject = new BluetoothObject();
-                    Fruit fruit = fruitList.get(i);
-                    BluetoothDevice bluetoothDevice = fruit.getBluetoothDevice();
-                    bluetoothObject.setBluetoothDevice(bluetoothDevice);
-                    try {
-                        bluetoothObject.connect(MainActivity.this, mHandler);
-                    } catch (Exception e) {
-                        ToastUtil.toastWord(MainActivity.this, getString(R.string.connect_fails));
-                        e.printStackTrace();
-                    }
-                }
-            });
-            initBluetooth();
-        }*/
+        beginDiscovery();
     }
 
     public void onRestart() {
@@ -166,13 +121,18 @@ public class MainActivity extends BaseActivity {
         super.onPause();
     }
 
+    @SuppressLint("MissingPermission")
     public void onStop() {
         super.onStop();
-        fruitList.clear();
+       // fruitList.clear();
         //adapter = new FruitAdapter(fruitList);
         // mRecyclerView.setAdapter(adapter);
         //注销蓝牙设备搜索的广播接收器
-        unregisterReceiver(discoveryReceiver);
+       //unregisterReceiver(discoveryReceiver);
+        if (mBluetooth.isDiscovering()) {
+            //mBluetooth.startDiscovery();//开始扫描周围的蓝牙设备
+            mBluetooth.cancelDiscovery();
+        }
         isCreate = false;
     }
 
@@ -196,6 +156,7 @@ public class MainActivity extends BaseActivity {
                                 } else {
                                     StaticObject.bluetoothEvent.senMsg(take);
                                 }
+                                StaticObject.bluetoothEvent.AllMsg(take);
                                 break;
                             case 1:
                                 StaticObject.bluetoothEvent.notConnect(take);
@@ -223,11 +184,6 @@ public class MainActivity extends BaseActivity {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        for (int i = 0; i < permissions.length; i++) {
-            Log.d(TAG, "onRequestPermissionsResult: " + permissions[i] + ":" + grantResults[i]);
-        }
-
-
         for (Integer permission : grantResults) {
             if (permission != 0) {
                 SystemExit("未获取运行权限");
@@ -273,27 +229,16 @@ public class MainActivity extends BaseActivity {
             } catch (Exception e) {
                 e.printStackTrace();
             }
-            //开始扫描数据
-            handler.postDelayed(runnable, 10L * scan);
         }
     }
 
-    private final Runnable runnable = new Runnable() {
-        public void run() {
-            this.update();
-            handler.postDelayed(this, 1000L * scan);// 间隔3秒
-        }
 
-        void update() {
-            //刷新msg的内容
-            beginDiscovery();
-        }
-    };
 
     @SuppressLint("MissingPermission")
     private void beginDiscovery() {
-        if (!mBluetooth.isDiscovering()) {
+        if (mBluetooth != null && !mBluetooth.isDiscovering()) {
             mBluetooth.startDiscovery();//开始扫描周围的蓝牙设备
+            //mBluetooth.cancelDiscovery();
         }
     }
 
@@ -307,21 +252,19 @@ public class MainActivity extends BaseActivity {
         }
         StaticObject.myBluetoothAdd = mBluetooth.getAddress();
 
+        //开始扫描
+        beginDiscovery();
         Set<BluetoothDevice> bondedDevices = mBluetooth.getBondedDevices();
 
         if (bondedDevices != null && bondedDevices.size() != 0) {
             for (BluetoothDevice device : bondedDevices) {
                 Fruit fruit = new Fruit();
                 fruit.setAddress(device.getAddress());
-                if (!fruitList.contains(fruit)) {
-                    fruit.setName(device.getName());
-                    fruit.setState(device.getBondState());
-                    fruit.setBluetoothType(device.getType());
-                    fruit.setBluetoothDevice(device);
-                    fruitList.add(fruit);
-                    onActivityDataChangedListener.addFruitData(fruit);
-
-                }
+                fruit.setName(device.getName());
+                fruit.setState(device.getBondState());
+                fruit.setBluetoothType(device.getType());
+                fruit.setBluetoothDevice(device);
+                onActivityDataChangedListener.addFruitData(fruit);
             }
         }
         //需要过滤多个动作，则调用IntentFilter对象的addAction添加新动作
@@ -341,7 +284,7 @@ public class MainActivity extends BaseActivity {
     }
 
     @SuppressLint("MissingPermission")
-    private final BroadcastReceiver discoveryReceiver = new BroadcastReceiver() {
+    public final BroadcastReceiver discoveryReceiver = new BroadcastReceiver() {
 
         @RequiresApi(api = Build.VERSION_CODES.R)
         @SuppressLint("NotifyDataSetChanged")
@@ -465,5 +408,7 @@ public class MainActivity extends BaseActivity {
         }
     };
 
-
+    public BluetoothAdapter getmBluetooth() {
+        return mBluetooth;
+    }
 }

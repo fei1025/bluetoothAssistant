@@ -45,20 +45,20 @@ public class MsgAdapter extends RecyclerView.Adapter<MsgAdapter.ViewHolder> {
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
         Msg msg = MsgList.get(position);
+        String bluetoothName = msg.getBluetoothName();
         if (msg.getType() == Msg.TYPE_RECEIVED) {
             holder.left_layout.setVisibility(View.VISIBLE);
             holder.right_layout.setVisibility(View.GONE);
             holder.left_msg.setText(msg.getContent());
             if (outBitmap == null) {
-                String bluetoothName = msg.getBluetoothName();
                 if(bluetoothName == null || bluetoothName.length() ==0){
                     bluetoothName=msg.getBluetoothAdd();
                 }
-                outBitmap = ImageUtils.defaultAvatar(bluetoothName);
-                BluetoothDrive messageList = LitePal.where("driveAdd = ? ",msg.getBluetoothAdd()).findFirst(BluetoothDrive.class);
+                BluetoothDrive messageList = LitePal.where("driveAdd = ? and uuid=? ",msg.getBluetoothAdd(),msg.getSendUuid()).findFirst(BluetoothDrive.class);
                 if(messageList == null ){
                     BluetoothDrive bluetoothDrive=new BluetoothDrive();
                     bluetoothDrive.setDriveAdd(msg.getBluetoothAdd());
+                    bluetoothDrive.setUuid(msg.getSendUuid());
                     bluetoothDrive.setDriveName(msg.getBluetoothName());
                     bluetoothDrive.setSystemImg(outBitmap);
                     bluetoothDrive.save();
@@ -68,6 +68,8 @@ public class MsgAdapter extends RecyclerView.Adapter<MsgAdapter.ViewHolder> {
                         messageList.save();
                     }
                 }
+                outBitmap = ImageUtils.defaultAvatar(bluetoothName);
+
             }
             holder.left_img.setImageBitmap(outBitmap);
         } else if (msg.getType() == Msg.TYPE_SENT) {
@@ -79,6 +81,7 @@ public class MsgAdapter extends RecyclerView.Adapter<MsgAdapter.ViewHolder> {
             }
             holder.right_img.setImageBitmap(myBitmap);
         }
+
     }
 
     @Override

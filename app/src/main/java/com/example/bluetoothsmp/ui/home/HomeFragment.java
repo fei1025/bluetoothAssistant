@@ -23,11 +23,14 @@ import com.zzf.bluetoothsmp.BluetoothObject;
 import com.zzf.bluetoothsmp.Fruit;
 import com.zzf.bluetoothsmp.MainActivity;
 import com.zzf.bluetoothsmp.customAdapter.FruitAdapter;
+import com.zzf.bluetoothsmp.myLayout.MySwipeRefreshLayout;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Set;
 
 public class HomeFragment extends Fragment {
 
@@ -35,10 +38,12 @@ public class HomeFragment extends Fragment {
     private FragmentHomeBinding binding;
     private RecyclerView mRecyclerView;
     private FruitAdapter adapter;
-    private SwipeRefreshLayout swipeRefresh;
+    private MySwipeRefreshLayout swipeRefresh;
     private final List<Fruit> fruitList = new ArrayList<>();
     private MainActivity mainActivity;
     private BluetoothObject bluetoothObject;
+    private Date uploadTime = new Date();
+
 
 
     @SuppressLint("ResourceAsColor")
@@ -59,11 +64,24 @@ public class HomeFragment extends Fragment {
         // mRecyclerView.setVisibility(View.GONE);
         //设置下拉刷新
         swipeRefresh = binding.swipeRefresh;
+        swipeRefresh.setTouchSlop(50);
         swipeRefresh.setColorSchemeColors(com.google.android.material.R.color.design_default_color_primary);
         swipeRefresh.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
             @Override
             public void onRefresh() {
+                System.out.println("--------------------------------------");
+                System.out.println((new Date().getTime() -uploadTime.getTime())/1000);
+                if(((new Date().getTime() -uploadTime.getTime())/1000) < 10){
+                    ToastUtil.toastWord("请不要频繁刷新");
+                    swipeRefresh.setRefreshing(false);
+                    return;
+                }
+
+                fruitList.clear();
+                adapter = new FruitAdapter(fruitList);
+                mRecyclerView.setAdapter(adapter);
                 refreshFruits();
+                uploadTime=new Date();
             }
         });
         adapter.setOnItemClickListener(new FruitAdapter.onItemDeleteListener() {
@@ -104,25 +122,31 @@ public class HomeFragment extends Fragment {
         return root;
     }
 
+    public void onStop() {
+        super.onStop();
+    }
+
 
     private void refreshFruits() {
         new Thread(new Runnable() {
             @Override
             public void run() {
+
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
                 mainActivity.runOnUiThread(new Runnable() {
-                    @SuppressLint("NotifyDataSetChanged")
+                    @SuppressLint({"NotifyDataSetChanged", "MissingPermission"})
                     @Override
                     public void run() {
-                        fruitList.clear();
+                        //fruitList.clear();
+                        mainActivity.initBluetooth();
+
                         adapter = new FruitAdapter(fruitList);
                         mRecyclerView.setAdapter(adapter);
-                        try {
-                            Thread.sleep(2000);
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
                         swipeRefresh.setRefreshing(false);
-                        //adapter.notifyDataSetChanged();
                     }
                 });
             }

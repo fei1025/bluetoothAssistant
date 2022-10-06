@@ -23,7 +23,7 @@
                 android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
                 app:popupTheme="@style/ThemeOverlay.AppCompat.Light" />
         </com.google.android.material.appbar.AppBarLayout>
-        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        <com.zzf.bluetoothsmp.myLayout.MySwipeRefreshLayout
             android:id="@+id/swipe_refresh"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
@@ -36,7 +36,7 @@
                 app:layout_behavior="@string/appbar_scrolling_view_behavior"
                 >
             </androidx.recyclerview.widget.RecyclerView>
-        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+        </com.zzf.bluetoothsmp.myLayout.MySwipeRefreshLayout>
 
     </androidx.coordinatorlayout.widget.CoordinatorLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

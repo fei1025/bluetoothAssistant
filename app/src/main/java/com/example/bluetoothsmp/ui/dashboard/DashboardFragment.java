@@ -9,7 +9,9 @@ import android.view.ViewGroup;
 import com.example.bluetoothsmp.databinding.FragmentDashboardBinding;
 import com.zzf.bluetoothsmp.customAdapter.InfoAdapter;
 import com.zzf.bluetoothsmp.entity.BluetoothDrive;
+import com.zzf.bluetoothsmp.entity.MessageMapper;
 import com.zzf.bluetoothsmp.utils.ImageUtils;
+import com.zzf.bluetoothsmp.utils.ToastUtil;
 
 import org.litepal.LitePal;
 
@@ -32,45 +34,39 @@ public class DashboardFragment extends Fragment {
 
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
-        DashboardViewModel dashboardViewModel =
-                new ViewModelProvider(this).get(DashboardViewModel.class);
 
         binding = FragmentDashboardBinding.inflate(inflater, container, false);
         View root = binding.getRoot();
-        Toolbar toolbar =binding.toolbar;
+        Toolbar toolbar = binding.toolbar;
         toolbar.setTitle("历史记录");
-        //final TextView textView = binding.textDashboard;
-        // dashboardViewModel.getText().observe(getViewLifecycleOwner(), textView::setText);
 
-        // Cursor bySQL = LitePal.findBySQL("");
-        //BluetoothDrive messageList = LitePal.where("driveAdd = ? ",msg.getBluetoothAdd()).findFirst(BluetoothDrive.class);
         List<BluetoothDrive> all = LitePal.findAll(BluetoothDrive.class);
         Log.d(TAG, "onCreateView: " + all.size());
         if (all == null || all.size() == 0) {
             all = new ArrayList<>();
         }
-        initmsg(all);
         msgRecyclerView = binding.cardList;
         InfoAdapter adapter = new InfoAdapter(all);
         LinearLayoutManager layoutManager = new LinearLayoutManager(getContext());
         msgRecyclerView.setLayoutManager(layoutManager);
         msgRecyclerView.setAdapter(adapter);
+        adapter.setOnClickDelete(new InfoAdapter.OnClickDelete() {
+
+            @Override
+            public void deleteItem(int adapterPosition, BluetoothDrive remove) {
+                List<MessageMapper> messageList = LitePal.where(" sendAdd =? and sendUuid = ?", remove.getDriveAdd(), remove.getUuid()).order("sendTime ").find(MessageMapper.class);
+                if (messageList != null && messageList.size() != 0) {
+                    for (int i = 0; i < messageList.size(); i++) {
+                        MessageMapper messageMapper = messageList.get(i);
+                        messageMapper.delete();
+                    }
+                }
+                remove.delete();
+            }
+        });
+
         return root;
     }
-
-
-    public void initmsg(List<BluetoothDrive> all) {
-        for (int i = 0; i < 10; i++) {
-            BluetoothDrive demo = new BluetoothDrive();
-            demo.setLastReceiveMsg("这是数据" + i);
-            demo.setSystemImg(ImageUtils.defaultAvatar("A"));
-            demo.setDriveName("demo" + i);
-            demo.setSenDate(new Date());
-            all.add(demo);
-        }
-
-    }
-
 
     @Override
     public void onDestroyView() {

@@ -95,6 +95,11 @@ public class Liao_tian extends AppCompatActivity {
         send.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                BluetoothServiceConnect bluetoothServiceConnect = StaticObject.bluetoothSocketMap.get(bluetoothAdd);
+                if(bluetoothServiceConnect ==null){
+                    ToastUtil.toastWord(MyApplication.getContext(),"请连接后重试");
+                    return;
+                }
                 String s = inputText.getText().toString();
                 if (!"".equals(s)) {
                     Msg eventDatum = new Msg(s, Msg.TYPE_SENT, bluetoothAdd);
@@ -158,16 +163,17 @@ public class Liao_tian extends AppCompatActivity {
         }
     }
     public void initMsg(){
-        List<MessageMapper> messageList = LitePal.where("receiveAdd = ? and sendAdd =?",StaticObject.myBluetoothAdd,bluetoothAdd).order("sendTime ").find(MessageMapper.class);
+        List<MessageMapper> messageList = LitePal.where(" sendAdd =? and sendUuid = ?",bluetoothAdd,bluetoothUUid).order("sendTime ").find(MessageMapper.class);
         if(messageList !=null && messageList.size() !=0 ){
             for (MessageMapper ms: messageList){
 
-                Msg m = new Msg(ms.getMessage(),ms.getType(),ms.getReceiveAdd());
+                Msg m = new Msg(ms.getMessage(),ms.getType(),ms.getSendAdd());
                 if(Msg.TYPE_RECEIVED==ms.getType()){
                     m.setBluetoothName(ms.getSendName());
                 }else {
                     m.setBluetoothName(ms.getReceiveName());
-                } 
+                }
+                m.setSendUuid(ms.getSendUuid());
                 msgList.add(m);
             }
         }

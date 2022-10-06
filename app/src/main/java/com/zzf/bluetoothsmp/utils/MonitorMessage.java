@@ -53,7 +53,13 @@ public class MonitorMessage {
 
 
     public synchronized void  saveMsg(Msg msg){
-        BluetoothDrive messageList = LitePal.where("driveAdd = ? ",msg.getBluetoothAdd()).findFirst(BluetoothDrive.class);
+        BluetoothDrive messageList = LitePal.where("driveAdd = ? and uuid = ? ",msg.getBluetoothAdd(),msg.getSendUuid()).findFirst(BluetoothDrive.class);
+        if(messageList == null ){
+            messageList=new BluetoothDrive();
+            messageList.setDriveAdd(msg.getBluetoothAdd());
+            messageList.setUuid(msg.getSendUuid());
+            messageList.setDriveName(msg.getBluetoothName());
+        }
         messageList.setLastReceiveMsg(msg.getContent());
         messageList.setSenDate(msg.getSenTime());
         messageList.save();
