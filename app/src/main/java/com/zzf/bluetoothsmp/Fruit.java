@@ -127,5 +127,20 @@ public class Fruit {
     public void setIsConnect(Integer isConnect) {
         this.isConnect = isConnect;
     }
+
+    @Override
+    public String toString() {
+        return "Fruit{" +
+                "name='" + name + '\'' +
+                ", address='" + address + '\'' +
+                ", rssi='" + rssi + '\'' +
+                ", state=" + state +
+                ", stateName='" + stateName + '\'' +
+                ", bluetoothDevice=" + bluetoothDevice +
+                ", isConnect=" + isConnect +
+                ", bluetoothType=" + bluetoothType +
+                ", bluetoothTypeName='" + bluetoothTypeName + '\'' +
+                '}';
+    }
 }
 

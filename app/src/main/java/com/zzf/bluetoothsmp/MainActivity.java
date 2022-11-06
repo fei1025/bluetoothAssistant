@@ -18,17 +18,20 @@ import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
 import android.view.KeyEvent;
+import android.view.Menu;
+import android.view.MenuItem;
 
 import com.example.bluetoothsmp.R;
 import com.example.bluetoothsmp.databinding.ActivityHomeBinding;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
+import com.zzf.bluetoothsmp.base.BaseActivity;
 import com.zzf.bluetoothsmp.entity.Msg;
 import com.zzf.bluetoothsmp.utils.CheckUpdate;
+import com.zzf.bluetoothsmp.utils.LanguageUtils;
 import com.zzf.bluetoothsmp.utils.MonitorMessage;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 import androidx.annotation.NonNull;
@@ -45,19 +48,14 @@ import static com.example.bluetoothsmp.R.string.ConnectTheInterrupt;
 
 public class MainActivity extends BaseActivity {
 
-    private final Handler handler = new Handler();
     private BluetoothAdapter mBluetooth;
 
-    //public BluetoothObject bluetoothObject;
-    //private final List<Fruit> fruitList = new ArrayList<>();
     private static final String TAG = "MainActivity";
     private final int mOpenCode = 0x01;
     public int scan = 1;
-    //private SwipeRefreshLayout swipeRefresh;
     private boolean isCreate = false;
     private ActivityHomeBinding binding;
     private OnActivityDataChangedListener onActivityDataChangedListener;
-
 
 
     @SuppressLint("ResourceAsColor")
@@ -70,10 +68,8 @@ public class MainActivity extends BaseActivity {
         // 设置title
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
-
         binding = ActivityHomeBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
-
         BottomNavigationView navView = findViewById(R.id.nav_view);
         // Passing each menu ID as a set of Ids because each
         // menu should be considered as top level destinations.
@@ -90,8 +86,48 @@ public class MainActivity extends BaseActivity {
         isCreate = true;
         //申请用户权限
         ActivityCompat.requestPermissions(MainActivity.this, mPermissionListnew, mOpenCode);
-
     }
+
+    public static void actionActivity(Context context) {
+        Intent intent = new Intent(context, MainActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        context.startActivity(intent);
+    }
+
+
+    @Override
+    public int getLayoutId() {
+        return R.layout.activity_main;
+    }
+
+
+    public void toSetLanguage(int type) {
+        Locale locale;
+        Context context = MyApplication.getAppContext();
+        if (type == 0) {
+            locale = LanguageUtils.getSystemLocale();
+            LanguageUtils.saveAppLocaleLanguage(LanguageUtils.SYSTEM_LANGUAGE_TGA);
+        } else if (type == 1) {
+            locale = Locale.US;
+            LanguageUtils.saveAppLocaleLanguage(locale.toLanguageTag());
+        } else if (type == 2) {
+            locale = Locale.SIMPLIFIED_CHINESE;
+            LanguageUtils.saveAppLocaleLanguage(locale.toLanguageTag());
+        } else {
+            return;
+        }
+      /*  if (LanguageUtils.isSimpleLanguage(context, locale)) {
+            Toast.makeText(context, "选择的语言和当前语言相同", Toast.LENGTH_SHORT).show();
+            return;
+        }*/
+        LanguageUtils.updateLanguage(context, locale);
+        MainActivity.actionActivity(context);
+    }
+
+
+
+
+
 
 /*    public void onConfigurationChanged(@NonNull Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
@@ -124,11 +160,11 @@ public class MainActivity extends BaseActivity {
     @SuppressLint("MissingPermission")
     public void onStop() {
         super.onStop();
-       // fruitList.clear();
+        // fruitList.clear();
         //adapter = new FruitAdapter(fruitList);
         // mRecyclerView.setAdapter(adapter);
         //注销蓝牙设备搜索的广播接收器
-       //unregisterReceiver(discoveryReceiver);
+        //unregisterReceiver(discoveryReceiver);
         if (mBluetooth.isDiscovering()) {
             //mBluetooth.startDiscovery();//开始扫描周围的蓝牙设备
             mBluetooth.cancelDiscovery();
@@ -170,23 +206,25 @@ public class MainActivity extends BaseActivity {
             }
         }
     });
+
     public interface OnActivityDataChangedListener {
         void addFruitData(Fruit string);
     }
+
     public void setOnActivityDataChangedListener(OnActivityDataChangedListener addFruitData) {
         this.onActivityDataChangedListener = addFruitData;
     }
 
 
-
     // 权限回调
     @Override
+    @SuppressLint("MissingPermission")
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         for (Integer permission : grantResults) {
             if (permission != 0) {
-                SystemExit("未获取运行权限");
+                SystemExit(getString(R.string.run));
                 return;
             }
         }
@@ -207,17 +245,12 @@ public class MainActivity extends BaseActivity {
         }
         //蓝牙服务未启动
         if (!mBluetooth.isEnabled()) {
-            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-                SystemExit("请启动蓝牙后重试");
-                return;
-            }
             boolean enable = mBluetooth.enable();
             if (!enable) {
                 SystemExit(getString(R.string.initBluetooth));
                 return;
             }
         }
-
         if (requestCode == mOpenCode) {
             //初始化蓝牙
             initBluetooth();
@@ -233,12 +266,10 @@ public class MainActivity extends BaseActivity {
     }
 
 
-
     @SuppressLint("MissingPermission")
     private void beginDiscovery() {
         if (mBluetooth != null && !mBluetooth.isDiscovering()) {
             mBluetooth.startDiscovery();//开始扫描周围的蓝牙设备
-            //mBluetooth.cancelDiscovery();
         }
     }
 
@@ -345,17 +376,17 @@ public class MainActivity extends BaseActivity {
         // 是否触发按键为back键
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             AlertDialog.Builder dialog = new AlertDialog.Builder(MainActivity.this);
-            dialog.setTitle("提示");
-            dialog.setMessage("确定退出吗?");
+            dialog.setTitle(getString(R.string.tips));
+            dialog.setMessage(getString(R.string.out));
             dialog.setCancelable(false);
-            dialog.setPositiveButton("确定", new DialogInterface.OnClickListener() {
+            dialog.setPositiveButton(getString(R.string.confirm), new DialogInterface.OnClickListener() {
                 @Override
                 public void onClick(DialogInterface dialog, int which) {
                     onBackPressed();
                     finish();
                 }
             });
-            dialog.setNegativeButton("取消", new DialogInterface.OnClickListener() {
+            dialog.setNegativeButton(getString(R.string.cancel), new DialogInterface.OnClickListener() {
                 @Override
                 public void onClick(DialogInterface dialog, int which) {
 
@@ -407,6 +438,26 @@ public class MainActivity extends BaseActivity {
             }
         }
     };
+
+
+    // 创建多选择框
+    @Override
+    public boolean onCreateOptionsMenu(@NonNull Menu menu) {
+        getMenuInflater().inflate(R.menu.home_menu, menu);
+        return true;
+    }
+
+    @SuppressLint("NonConstantResourceId")
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        //return super.onOptionsItemSelected(item);
+        switch (item.getItemId()) {
+            case R.id.Disconnect:
+                break;
+        }
+        return true;
+    }
+
 
     public BluetoothAdapter getmBluetooth() {
         return mBluetooth;

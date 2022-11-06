@@ -46,6 +46,7 @@ public class Liao_tian extends AppCompatActivity {
     private String UUID;
     String bluetoothName;
     String bluetoothUUid;
+    String infoType;
 
     public Handler mHandler = new Handler(Looper.getMainLooper()) {
         @Override
@@ -75,11 +76,12 @@ public class Liao_tian extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_liao_tian);
         Toolbar toolbar = findViewById(R.id.lao_tian_toolbar);
-         bluetoothName = getIntent().getStringExtra("bluetoothName");
-         bluetoothAdd = getIntent().getStringExtra("bluetoothAdd");
-         bluetoothUUid = getIntent().getStringExtra("bluetoothUUid");
-        if(bluetoothName ==null || bluetoothName.length()==0){
-            bluetoothName="无";
+        bluetoothName = getIntent().getStringExtra("bluetoothName");
+        bluetoothAdd = getIntent().getStringExtra("bluetoothAdd");
+        bluetoothUUid = getIntent().getStringExtra("bluetoothUUid");
+        infoType = getIntent().getStringExtra("infoType");
+        if (bluetoothName == null || bluetoothName.length() == 0) {
+            bluetoothName = "无";
         }
         toolbar.setTitle(bluetoothName);
         setSupportActionBar(toolbar);
@@ -97,8 +99,8 @@ public class Liao_tian extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 BluetoothServiceConnect bluetoothServiceConnect = StaticObject.bluetoothSocketMap.get(bluetoothAdd);
-                if(bluetoothServiceConnect ==null){
-                    ToastUtil.toastWord(MyApplication.getContext(),"请连接后重试");
+                if (bluetoothServiceConnect == null) {
+                    ToastUtil.toastWord(MyApplication.getContext(), "请连接后重试");
                     return;
                 }
                 String s = inputText.getText().toString();
@@ -140,13 +142,25 @@ public class Liao_tian extends AppCompatActivity {
         }, UUID);
     }
 
+
+    // 创建多选择框
+    @Override
+    public boolean onCreateOptionsMenu(@NonNull Menu menu) {
+        getMenuInflater().inflate(R.menu.liao_tian, menu);
+        return true;
+    }
+
     @SuppressLint("NonConstantResourceId")
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         //return super.onOptionsItemSelected(item);
         switch (item.getItemId()) {
             case R.id.Disconnect:
-                dialog();
+                if ("0".equals(infoType)) {
+                    dialog(getString(R.string.bluetoothDisconnected));
+                } else {
+                    dialog(getString(R.string.cutBluetooth));
+                }
                 break;
         }
         return true;
@@ -154,24 +168,25 @@ public class Liao_tian extends AppCompatActivity {
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
-        Log.d(TAG, "onBackPressed: 这里是返回按键是??????"+keyCode);
         // 是否触发按键为back键
         if (keyCode == KeyEvent.KEYCODE_BACK) {
-            dialog();
+            if ("0".equals(infoType)) {exit();}
+            dialog(getString(R.string.cutBluetooth));
             return true;
         } else {// 如果不是back键正常响应
             return super.onKeyDown(keyCode, event);
         }
     }
-    public void initMsg(){
-        List<MessageMapper> messageList = LitePal.where(" sendAdd =? and sendUuid = ?",bluetoothAdd,bluetoothUUid).order("sendTime ").find(MessageMapper.class);
-        if(messageList !=null && messageList.size() !=0 ){
-            for (MessageMapper ms: messageList){
 
-                Msg m = new Msg(ms.getMessage(),ms.getType(),ms.getSendAdd());
-                if(Msg.TYPE_RECEIVED==ms.getType()){
+    public void initMsg() {
+        List<MessageMapper> messageList = LitePal.where(" sendAdd =? and sendUuid = ?", bluetoothAdd, bluetoothUUid).order("sendTime ").find(MessageMapper.class);
+        if (messageList != null && messageList.size() != 0) {
+            for (MessageMapper ms : messageList) {
+
+                Msg m = new Msg(ms.getMessage(), ms.getType(), ms.getSendAdd());
+                if (Msg.TYPE_RECEIVED == ms.getType()) {
                     m.setBluetoothName(ms.getSendName());
-                }else {
+                } else {
                     m.setBluetoothName(ms.getReceiveName());
                 }
                 m.setSendUuid(ms.getSendUuid());
@@ -181,18 +196,18 @@ public class Liao_tian extends AppCompatActivity {
         }
     }
 
-    public void dialog(){
+    public void dialog(String s) {
         AlertDialog.Builder dialog = new AlertDialog.Builder(Liao_tian.this);
-        dialog.setTitle("提示");
-        dialog.setMessage("确定切断蓝牙,并返回吗?");
+        dialog.setTitle(getString(R.string.tips));
+        dialog.setMessage(s);
         dialog.setCancelable(false);
-        dialog.setPositiveButton("确定", new DialogInterface.OnClickListener() {
+        dialog.setPositiveButton(getString(R.string.confirm), new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
                 exit();
             }
         });
-        dialog.setNegativeButton("取消", new DialogInterface.OnClickListener() {
+        dialog.setNegativeButton(getString(R.string.cancel), new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
             }
@@ -200,7 +215,7 @@ public class Liao_tian extends AppCompatActivity {
         dialog.show();
     }
 
-    public void exit(){
+    public void exit() {
         StaticObject.bluetoothEvent.deleteAllEventByUuid(UUID);
         BluetoothServiceConnect remove = StaticObject.bluetoothSocketMap.remove(bluetoothAdd);
         if (remove != null) {
@@ -209,13 +224,6 @@ public class Liao_tian extends AppCompatActivity {
         finish();
     }
 
-
-    // 创建多选择框
-    @Override
-    public boolean onCreateOptionsMenu(@NonNull Menu menu) {
-        getMenuInflater().inflate(R.menu.liao_tian, menu);
-        return true;
-    }
 
     public void senHandlerMsg(int what, Object m) {
         Message msg = new Message();

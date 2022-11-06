@@ -15,6 +15,7 @@ import com.google.android.play.core.install.model.InstallStatus;
 import com.google.android.play.core.install.model.UpdateAvailability;
 
 import androidx.appcompat.app.AlertDialog;
+import com.example.bluetoothsmp.R;
 
 public class CheckUpdate {
     private int MY_REQUEST_CODE = 01;
@@ -31,10 +32,10 @@ public class CheckUpdate {
             if (appUpdateInfo.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE && appUpdateInfo.isUpdateTypeAllowed(AppUpdateType.IMMEDIATE)) {
                 // Request the update.
                 AlertDialog.Builder dialog = new AlertDialog.Builder(context);
-                dialog.setTitle("提示");
-                dialog.setMessage("确定更新吗?");
+                dialog.setTitle(context.getString(R.string.tips));
+                dialog.setMessage(context.getString(R.string.updateApp));
                 dialog.setCancelable(false);
-                dialog.setPositiveButton("确定", new DialogInterface.OnClickListener() {
+                dialog.setPositiveButton(context.getString(R.string.confirm), new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
 
@@ -79,19 +80,6 @@ public class CheckUpdate {
         });
     }
 
-    public void tishi(String message, Context context) {
-        AlertDialog.Builder dialog = new AlertDialog.Builder(context);
-        dialog.setTitle("提示");
-        dialog.setMessage(message);
-        dialog.setCancelable(false);
-        dialog.setPositiveButton("确定", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-            }
-        });
-
-        dialog.show();
-    }
 
 
 }

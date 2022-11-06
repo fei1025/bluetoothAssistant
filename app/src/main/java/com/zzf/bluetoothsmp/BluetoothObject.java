@@ -101,6 +101,9 @@ public class BluetoothObject  extends EventDispatcher {
         @Override
         public void run() {
             try {
+
+                //BluetoothBle bluetoothBle = new BluetoothBle(bluetoothDevice);
+
                 insecureRfcommSocketToServiceRecord = bluetoothDevice.createInsecureRfcommSocketToServiceRecord(UUID.fromString(SPP_UUID));
                 insecureRfcommSocketToServiceRecord.connect();
                 BluetoothServiceConnect bluetoothServiceConnect = new BluetoothServiceConnect();
@@ -123,14 +126,6 @@ public class BluetoothObject  extends EventDispatcher {
             }
         }
     });
-
-
-
-
-
-
-
-
     public BluetoothDevice getBluetoothDevice() {
         return bluetoothDevice;
     }

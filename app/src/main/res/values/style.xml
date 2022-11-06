@@ -10,6 +10,7 @@
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
         <item name="android:backgroundDimEnabled">true</item>
+
     </style>
 
     <!-- popup window 显示消失动画-->
@@ -18,6 +19,9 @@
         <!-- 指定显示的动画xml  -->
         <item name="android:windowHideAnimation">@anim/dialog_exit</item>
         <!-- 指定消失的动画xml  -->
+    </style>
+    <style name="ToolbarPopupTheme" parent="@style/ThemeOverlay.AppCompat.Light">
+        <item name="overlapAnchor">false</item>
     </style>
 
 </resources>

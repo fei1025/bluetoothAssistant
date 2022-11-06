@@ -61,6 +61,7 @@ public class InfoAdapter extends RecyclerView.Adapter<InfoAdapter.ViewHolder> {
                 intent.putExtra("bluetoothName",bluetoothDrive1.getDriveName());
                 intent.putExtra("bluetoothAdd",bluetoothDrive1.getDriveAdd());
                 intent.putExtra("bluetoothUUid",bluetoothDrive1.getUuid());
+                intent.putExtra("infoType","0");
                 v.getContext().startActivity(intent);
             }
         });
