@@ -29,5 +29,8 @@
     <string name="switchLanguages">languages</string>
     <string name="DirectionsForUse">DirectionsForUse</string>
     <string name="out">Are you sure you want out?</string>
+    <string name="chat">chat</string>
+    <string name="keyboard">keyboard</string>
+    <string name="LongPress">Long-press editing</string>
 
 </resources>

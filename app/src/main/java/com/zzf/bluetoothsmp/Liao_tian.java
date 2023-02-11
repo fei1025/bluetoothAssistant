@@ -2,6 +2,7 @@ package com.zzf.bluetoothsmp;
 
 import android.annotation.SuppressLint;
 import android.content.DialogInterface;
+import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -19,12 +20,12 @@ import com.zzf.bluetoothsmp.customAdapter.MsgAdapter;
 import com.zzf.bluetoothsmp.entity.Msg;
 import com.zzf.bluetoothsmp.event.BluetoothType;
 import com.zzf.bluetoothsmp.entity.MessageMapper;
+import com.zzf.bluetoothsmp.liaoTian.liantian_new;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
 
 import org.litepal.LitePal;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
@@ -143,7 +144,7 @@ public class Liao_tian extends AppCompatActivity {
     }
 
 
-    // 创建多选择框
+    // 创建多选择框按钮
     @Override
     public boolean onCreateOptionsMenu(@NonNull Menu menu) {
         getMenuInflater().inflate(R.menu.liao_tian, menu);
@@ -162,6 +163,10 @@ public class Liao_tian extends AppCompatActivity {
                     dialog(getString(R.string.cutBluetooth));
                 }
                 break;
+            case R.id.keyboardModer:
+               // Intent liaoTian = new Intent(this, keyboard.class);
+                Intent liaoTian = new Intent(this, liantian_new.class);
+                this.startActivity(liaoTian);
         }
         return true;
     }
@@ -179,6 +184,9 @@ public class Liao_tian extends AppCompatActivity {
     }
 
     public void initMsg() {
+        if(bluetoothAdd == null && bluetoothUUid == null){
+            return;
+        }
         List<MessageMapper> messageList = LitePal.where(" sendAdd =? and sendUuid = ?", bluetoothAdd, bluetoothUUid).order("sendTime ").find(MessageMapper.class);
         if (messageList != null && messageList.size() != 0) {
             for (MessageMapper ms : messageList) {

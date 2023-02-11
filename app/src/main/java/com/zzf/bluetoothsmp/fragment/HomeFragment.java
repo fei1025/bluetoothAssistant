@@ -16,6 +16,7 @@ import com.example.bluetoothsmp.R;
 import com.example.bluetoothsmp.databinding.FragmentHomeBinding;
 import com.zzf.bluetoothsmp.BluetoothObject;
 import com.zzf.bluetoothsmp.Fruit;
+import com.zzf.bluetoothsmp.Liao_tian;
 import com.zzf.bluetoothsmp.MainActivity;
 import com.zzf.bluetoothsmp.customAdapter.FruitAdapter;
 import com.zzf.bluetoothsmp.myLayout.MySwipeRefreshLayout;
@@ -30,6 +31,8 @@ import java.util.Locale;
 import androidx.annotation.NonNull;
 import androidx.appcompat.widget.Toolbar;
 import androidx.fragment.app.Fragment;
+import androidx.fragment.app.FragmentManager;
+import androidx.fragment.app.FragmentTransaction;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
@@ -82,6 +85,10 @@ public class HomeFragment extends Fragment {
                             item.setIcon(R.drawable.ic_zh);
 
                         }
+                        return true;
+                    case R.id.ys1:
+                        Intent liaoTian = new Intent(mainActivity, Liao_tian.class);
+                        mainActivity.startActivity(liaoTian);
                         return true;
 
                 }

@@ -29,8 +29,6 @@ public class MySwipeRefreshLayout extends SwipeRefreshLayout {
                 break;
             case MotionEvent.ACTION_MOVE:
                 final float yDiff = ev.getY() - mInitialDownY;
-                System.out.println("--------------------------------------");
-                System.out.println(yDiff);
                 if (yDiff < mTouchSlop) {
                     return false;
                 }

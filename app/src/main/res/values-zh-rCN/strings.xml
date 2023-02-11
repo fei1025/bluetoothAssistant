@@ -29,5 +29,8 @@
     <string name="switchLanguages">切换语言</string>
     <string name="DirectionsForUse">使用说明</string>
     <string name="out">确定要退出吗?</string>
+    <string name="chat">聊天模式</string>
+    <string name="keyboard">键盘模式</string>
+    <string name="LongPress">长安编辑</string>
 
 </resources>

@@ -9,4 +9,9 @@
     android:icon="@drawable/ic_duankai"
     app:showAsAction="always"
     />
+    <item
+        android:id="@+id/keyboardModer"
+        android:title="键盘模式"
+        />
+
 </menu>
