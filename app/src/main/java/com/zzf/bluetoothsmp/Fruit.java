@@ -2,14 +2,19 @@ package com.zzf.bluetoothsmp;
 
 
 import android.bluetooth.BluetoothDevice;
+import android.content.Context;
+
+import androidx.annotation.NonNull;
+
+import com.example.bluetoothsmp.R;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
 public class Fruit {
-    static  Map<Integer,String> map = new HashMap<>();
-    static  Map<Integer,String> stateMap = new HashMap<>();
+    static  Map<Integer,Integer> map = new HashMap<>();
+    static  Map<Integer,Integer> stateMap = new HashMap<>();
     // BOND_BONDED 表示远程设备已绑定（配对）。
     //BOND_BONDING  表示正在与远程设备进行绑定（配对）。
     // BOND_NONE 表示远程设备未绑定（配对）
@@ -19,13 +24,14 @@ public class Fruit {
     //DEVICE_TYPE_LE  蓝牙设备类型，低功耗 - 仅限 LE
     //DEVICE_TYPE_UNKNOWN 蓝牙设备类型，未知
     static {
-        map.put(BluetoothDevice.DEVICE_TYPE_CLASSIC,"经典-BR/EDR");
-        map.put(BluetoothDevice.DEVICE_TYPE_DUAL,"双模式-BR/EDR/LE");
-        map.put(BluetoothDevice.DEVICE_TYPE_LE,"低功耗-仅限LE");
-        map.put(BluetoothDevice.DEVICE_TYPE_UNKNOWN,"未知");
-        stateMap.put(BluetoothDevice.BOND_BONDED,"已配对");
-        stateMap.put(BluetoothDevice.BOND_BONDING,"正在配对");
-        stateMap.put(BluetoothDevice.BOND_NONE,"未配对");
+
+        map.put(BluetoothDevice.DEVICE_TYPE_CLASSIC, R.string.BR_EDR);
+        map.put(BluetoothDevice.DEVICE_TYPE_DUAL,R.string.BR_EDR_LE);
+        map.put(BluetoothDevice.DEVICE_TYPE_LE,R.string.LE);
+        map.put(BluetoothDevice.DEVICE_TYPE_UNKNOWN,R.string.unknown);
+        stateMap.put(BluetoothDevice.BOND_BONDED,R.string.paired);
+        stateMap.put(BluetoothDevice.BOND_BONDING,R.string.pairing);
+        stateMap.put(BluetoothDevice.BOND_NONE,R.string.unpaired);
     }
 
 
@@ -39,6 +45,11 @@ public class Fruit {
     public  Integer isConnect =0;
     public Integer bluetoothType;
     public String bluetoothTypeName;
+    private Context contex;
+
+    public Fruit(@NonNull Context contex) {
+        this.contex = contex;
+    }
 
     public String getName() {
         return name;
@@ -78,7 +89,7 @@ public class Fruit {
 
     public void setBluetoothType(Integer bluetoothType) {
         this.bluetoothType = bluetoothType;
-        this.bluetoothTypeName= map.get(bluetoothType);
+        this.bluetoothTypeName= contex.getString(map.get(bluetoothType));
     }
 
     public String getBluetoothTypeName() {
@@ -109,7 +120,7 @@ public class Fruit {
 
     public void setState(Integer state) {
         this.state = state;
-        this.stateName=stateMap.get(state);
+        this.stateName=contex.getString(stateMap.get(state));
     }
 
     public String getStateName() {

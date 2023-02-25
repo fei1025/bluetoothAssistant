@@ -10,10 +10,7 @@
         android:id="@+id/ys"
         android:title="@string/ys"
         />
-    <item
-        android:id="@+id/ys1"
-        android:title="点击"
-        />
+
     <item
         android:id="@+id/bt_menu_language"
         android:title="@string/switchLanguages"

@@ -31,6 +31,22 @@
     <string name="out">确定要退出吗?</string>
     <string name="chat">聊天模式</string>
     <string name="keyboard">键盘模式</string>
-    <string name="LongPress">长安编辑</string>
+    <string name="LongPress">长按编辑</string>
+    <string name="BR_EDR">经典-BR/EDR</string>
+    <string name="BR_EDR_LE">双模式-BR/EDR/LE</string>
+    <string name="LE">低功耗-仅限LE</string>
+    <string name="unknown">未知</string>
+    <string name="paired">已配对</string>
+    <string name="pairing">正在配对</string>
+    <string name="unpaired">未配对</string>
+    <string name="OpenEdit">开启编辑</string>
+    <string name="CloseEdit">关闭编辑</string>
+    <string name="ButtonEditor">按钮编辑器</string>
+    <string name="ButtonName">按钮名字</string>
+    <string name="downInfo">按下信息</string>
+    <string name="upInfo">松开信息</string>
+    <string name="PleaseEnterButtonName">请输入按钮的名字</string>
+    <string name="PleaseEnterSenMsg">请输入按下会发送的信息</string>
+    <string name="UpEnterSenMsg">按钮松开会发送的信息</string>
 
 </resources>

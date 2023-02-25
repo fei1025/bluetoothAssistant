@@ -19,6 +19,7 @@ import com.zzf.bluetoothsmp.Fruit;
 import com.zzf.bluetoothsmp.Liao_tian;
 import com.zzf.bluetoothsmp.MainActivity;
 import com.zzf.bluetoothsmp.customAdapter.FruitAdapter;
+import com.zzf.bluetoothsmp.liaoTian.Liantian_new;
 import com.zzf.bluetoothsmp.myLayout.MySwipeRefreshLayout;
 import com.zzf.bluetoothsmp.utils.LanguageUtils;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
@@ -85,10 +86,6 @@ public class HomeFragment extends Fragment {
                             item.setIcon(R.drawable.ic_zh);
 
                         }
-                        return true;
-                    case R.id.ys1:
-                        Intent liaoTian = new Intent(mainActivity, Liao_tian.class);
-                        mainActivity.startActivity(liaoTian);
                         return true;
 
                 }

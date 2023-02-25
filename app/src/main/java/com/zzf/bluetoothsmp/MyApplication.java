@@ -6,12 +6,16 @@ import android.app.Application;
 import android.content.Context;
 import android.os.Bundle;
 
+import com.zzf.bluetoothsmp.entity.KeyboardEntity;
+import com.zzf.bluetoothsmp.entity.MessageMapper;
 import com.zzf.bluetoothsmp.utils.LanguageUtils;
 
 import org.litepal.LitePal;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+
+import java.util.List;
 
 
 public class MyApplication  extends Application {
@@ -30,6 +34,9 @@ public class MyApplication  extends Application {
 
 
     }
+
+
+
     private void registerActivityLifecycleCallbacks() {
         mApplication.registerActivityLifecycleCallbacks(new ActivityLifecycleCallbacks() {
             @Override

@@ -20,7 +20,7 @@ import com.zzf.bluetoothsmp.customAdapter.MsgAdapter;
 import com.zzf.bluetoothsmp.entity.Msg;
 import com.zzf.bluetoothsmp.event.BluetoothType;
 import com.zzf.bluetoothsmp.entity.MessageMapper;
-import com.zzf.bluetoothsmp.liaoTian.liantian_new;
+import com.zzf.bluetoothsmp.liaoTian.Liantian_new;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
 
 import org.litepal.LitePal;
@@ -144,13 +144,14 @@ public class Liao_tian extends AppCompatActivity {
     }
 
 
-    // 创建多选择框按钮
+  /*  // 创建多选择框按钮
     @Override
     public boolean onCreateOptionsMenu(@NonNull Menu menu) {
         getMenuInflater().inflate(R.menu.liao_tian, menu);
         return true;
-    }
+    }*/
 
+/*
     @SuppressLint("NonConstantResourceId")
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
@@ -163,19 +164,25 @@ public class Liao_tian extends AppCompatActivity {
                     dialog(getString(R.string.cutBluetooth));
                 }
                 break;
-            case R.id.keyboardModer:
+     */
+/*       case R.id.keyboardModer:
                // Intent liaoTian = new Intent(this, keyboard.class);
-                Intent liaoTian = new Intent(this, liantian_new.class);
-                this.startActivity(liaoTian);
+                Intent liaoTian = new Intent(this, Liantian_new.class);
+                this.startActivity(liaoTian);*//*
+
         }
         return true;
     }
+*/
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         // 是否触发按键为back键
         if (keyCode == KeyEvent.KEYCODE_BACK) {
-            if ("0".equals(infoType)) {exit();}
+            if ("0".equals(infoType)) {
+                exit();
+                return true;
+            }
             dialog(getString(R.string.cutBluetooth));
             return true;
         } else {// 如果不是back键正常响应
@@ -184,7 +191,7 @@ public class Liao_tian extends AppCompatActivity {
     }
 
     public void initMsg() {
-        if(bluetoothAdd == null && bluetoothUUid == null){
+        if (bluetoothAdd == null && bluetoothUUid == null) {
             return;
         }
         List<MessageMapper> messageList = LitePal.where(" sendAdd =? and sendUuid = ?", bluetoothAdd, bluetoothUUid).order("sendTime ").find(MessageMapper.class);

@@ -37,6 +37,8 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="5dp"
             android:layout_marginStart="8dp"
+            android:layout_marginEnd="20dp"
+
             android:layout_marginBottom="20dp"
             android:text="aaacc"
             android:textSize="12sp"
@@ -47,11 +49,11 @@
             android:id="@+id/tv_stateName"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="20dp"
-            android:text="ccc"
+            android:text="cc1c"
             android:textSize="12sp"
             app:layout_constraintBottom_toBottomOf="@+id/tv_bluetoothTypeName"
-            app:layout_constraintEnd_toStartOf="@+id/button_connect" />
+            app:layout_constraintEnd_toEndOf="@+id/tv_rssi"
+            />
 
         <TextView
             android:id="@+id/tv_address"

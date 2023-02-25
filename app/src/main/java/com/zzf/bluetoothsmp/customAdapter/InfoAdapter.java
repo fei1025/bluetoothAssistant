@@ -12,9 +12,11 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.example.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.BluetoothObject;
 import com.zzf.bluetoothsmp.Liao_tian;
 import com.zzf.bluetoothsmp.MyApplication;
 import com.zzf.bluetoothsmp.entity.BluetoothDrive;
+import com.zzf.bluetoothsmp.liaoTian.Liantian_new;
 import com.zzf.bluetoothsmp.utils.DateUtils;
 import com.zzf.bluetoothsmp.utils.ImageUtils;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
@@ -55,13 +57,20 @@ public class InfoAdapter extends RecyclerView.Adapter<InfoAdapter.ViewHolder> {
         holder.mLinearLayout.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
+                //聊天记录
                 int adapterPosition = holder.getAdapterPosition();
                 BluetoothDrive bluetoothDrive1 = list.get(adapterPosition);
+                //Intent intent = new Intent(v.getContext(), Liantian_new.class);
                 Intent intent = new Intent(v.getContext(), Liao_tian.class);
                 intent.putExtra("bluetoothName",bluetoothDrive1.getDriveName());
                 intent.putExtra("bluetoothAdd",bluetoothDrive1.getDriveAdd());
                 intent.putExtra("bluetoothUUid",bluetoothDrive1.getUuid());
                 intent.putExtra("infoType","0");
+                BluetoothDrive drive=new BluetoothDrive();
+                drive.setDriveName(bluetoothDrive1.getDriveName());
+                drive.setDriveAdd(bluetoothDrive1.getDriveAdd());
+                drive.setUuid(bluetoothDrive1.getUuid());
+                intent.putExtra("BluetoothDrive",drive);
                 v.getContext().startActivity(intent);
             }
         });

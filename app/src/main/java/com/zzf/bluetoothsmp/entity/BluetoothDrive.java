@@ -6,9 +6,10 @@ import android.graphics.BitmapFactory;
 import org.litepal.crud.LitePalSupport;
 
 import java.io.ByteArrayOutputStream;
+import java.io.Serializable;
 import java.util.Date;
 
-public class BluetoothDrive extends LitePalSupport {
+public class BluetoothDrive extends LitePalSupport implements Serializable {
     private String driveAdd;
     private String driveName;
     private Bitmap systemImg;

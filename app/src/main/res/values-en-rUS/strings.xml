@@ -32,5 +32,21 @@
     <string name="chat">chat</string>
     <string name="keyboard">keyboard</string>
     <string name="LongPress">Long-press editing</string>
+    <string name="BR_EDR">BR/EDR</string>
+    <string name="BR_EDR_LE">BR/EDR/LE</string>
+    <string name="LE">LE</string>
+    <string name="unknown">unknown</string>
+    <string name="paired">paired</string>
+    <string name="pairing">pairing</string>
+    <string name="unpaired">unpaired</string>
+    <string name="OpenEdit">open edit</string>
+    <string name="CloseEdit">close edit</string>
+    <string name="ButtonEditor">ButtonEditor</string>
+    <string name="ButtonName">ButtonName</string>
+    <string name="downInfo">down</string>
+    <string name="upInfo">up</string>
+    <string name="PleaseEnterButtonName">Please enter a button name</string>
+    <string name="PleaseEnterSenMsg">Please enter the message that will be sent when pressed</string>
+    <string name="UpEnterSenMsg">Button release will send information</string>
 
 </resources>

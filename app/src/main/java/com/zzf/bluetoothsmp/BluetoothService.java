@@ -8,6 +8,9 @@ import android.bluetooth.BluetoothSocket;
 import android.content.Context;
 import android.content.Intent;
 
+import com.zzf.bluetoothsmp.entity.BluetoothDrive;
+import com.zzf.bluetoothsmp.liaoTian.Liantian_new;
+
 import java.io.IOException;
 import java.util.UUID;
 
@@ -27,15 +30,20 @@ public class BluetoothService implements BluetoothBase {
                         BluetoothSocket accept = bluetoothService.accept();
                         BluetoothServiceConnect bluetoothServiceConnect = new BluetoothServiceConnect();
                         bluetoothServiceConnect.start(mcontex, accept,BluetoothObject.SPP_UUID);
-                        Intent liaoTian = new Intent(mcontex, Liao_tian.class);
+                        Intent liaoTian = new Intent(mcontex, Liantian_new.class);
                         BluetoothDevice bluetoothDevice = accept.getRemoteDevice();
+                        BluetoothDrive drive=new BluetoothDrive();
                         String name = bluetoothDevice.getName();
                         if(name == null || name.length()==0){
                             name=  bluetoothDevice.getAddress();
                         }
+                        drive.setDriveName(name);
+                        drive.setDriveAdd(bluetoothDevice.getAddress());
+                        drive.setUuid(BluetoothObject.SPP_UUID);
                         liaoTian.putExtra("bluetoothName",name);
                         liaoTian.putExtra("bluetoothAdd",bluetoothDevice.getAddress());
                         liaoTian.putExtra("bluetoothUUid",BluetoothObject.SPP_UUID);
+                        liaoTian.putExtra("BluetoothDrive",drive);
                         mcontex.startActivity(liaoTian);
                     }
                 } catch (Exception e) {

@@ -71,6 +71,9 @@ dependencies {
     implementation 'org.litepal.guolindev:core:3.2.3'
     //侧滑删除效果
     implementation 'com.github.mcxtzhang:SwipeDelMenuLayout:V1.2.1'
+    //debug 动态查询数据库
+    debugImplementation 'com.amitshekhar.android:debug-db:1.0.6'
+
 
 
 

@@ -33,7 +33,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.BluetoothSMP" >
         <activity
-            android:name="com.zzf.bluetoothsmp.liaoTian.liantian_new"
+            android:name="com.zzf.bluetoothsmp.liaoTian.Liantian_new"
             android:exported="false"
             android:theme="@style/Theme.BluetoothSMP.NoActionBar" />
         <activity

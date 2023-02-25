@@ -11,7 +11,9 @@ import android.os.Looper;
 import android.os.Message;
 
 import com.example.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.entity.BluetoothDrive;
 import com.zzf.bluetoothsmp.event.EventDispatcher;
+import com.zzf.bluetoothsmp.liaoTian.Liantian_new;
 import com.zzf.bluetoothsmp.loading.WeiboDialogUtils;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
 
@@ -109,7 +111,8 @@ public class BluetoothObject  extends EventDispatcher {
                 BluetoothServiceConnect bluetoothServiceConnect = new BluetoothServiceConnect();
                 bluetoothServiceConnect.start(mcontex,insecureRfcommSocketToServiceRecord,SPP_UUID);
                 connectStart = true;
-                Intent liaoTian = new Intent(mcontex, Liao_tian.class);
+                //Intent liaoTian = new Intent(mcontex, Liao_tian.class);
+                Intent liaoTian = new Intent(mcontex, Liantian_new.class);
                 String name = bluetoothDevice.getName();
                 if(name == null || name.length()==0){
                     name=  bluetoothDevice.getAddress();
@@ -117,6 +120,11 @@ public class BluetoothObject  extends EventDispatcher {
                 liaoTian.putExtra("bluetoothName",name);
                 liaoTian.putExtra("bluetoothAdd",bluetoothDevice.getAddress());
                 liaoTian.putExtra("bluetoothUUid",SPP_UUID);
+                BluetoothDrive drive=new BluetoothDrive();
+                drive.setDriveName(name);
+                drive.setDriveAdd(bluetoothDevice.getAddress());
+                drive.setUuid(SPP_UUID);
+                liaoTian.putExtra("BluetoothDrive",drive);
                 mcontex.startActivity(liaoTian);
             } catch (Exception e) {
                 WeiboDialogUtils.closeDialog(loadingDialog);

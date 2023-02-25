@@ -289,7 +289,7 @@ public class MainActivity extends BaseActivity {
 
         if (bondedDevices != null && bondedDevices.size() != 0) {
             for (BluetoothDevice device : bondedDevices) {
-                Fruit fruit = new Fruit();
+                Fruit fruit = new Fruit(this);
                 fruit.setAddress(device.getAddress());
                 fruit.setName(device.getName());
                 fruit.setState(device.getBondState());
@@ -324,7 +324,7 @@ public class MainActivity extends BaseActivity {
             String action = intent.getAction();
             BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
             int bondState = device.getBondState();
-            Fruit fruit = new Fruit();
+            Fruit fruit = new Fruit(MainActivity.this);
             fruit.setAddress(device.getAddress());
 
             //发现新的蓝牙设备
