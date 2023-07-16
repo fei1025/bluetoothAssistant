@@ -153,12 +153,15 @@ public class Liantian_new extends AppCompatActivity {
     }
 
     public void senMsg(String s){
+        System.out.println("-----------------------------------");
+        System.out.println(s);
         BluetoothServiceConnect bluetoothServiceConnect = StaticObject.bluetoothSocketMap.get(drive.getDriveAdd());
         if (bluetoothServiceConnect == null) {
             ToastUtil.toastWord(MyApplication.getContext(), "请连接后重试");
             return;
         }
         if (!"".equals(s)) {
+            s=s+"\r\n";
             Msg eventDatum = new Msg(s, Msg.TYPE_SENT, drive.getDriveAdd());
             try {
                 eventDatum.setBluetoothName(drive.getDriveName());

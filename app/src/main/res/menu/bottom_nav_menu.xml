@@ -6,6 +6,11 @@
         android:id="@+id/navigation_home"
         android:icon="@drawable/ic_home_black_24dp"
         android:title="@string/bluetooth_assistant" />
+
+    <item
+        android:id="@+id/navigation_service"
+        android:icon="@drawable/service"
+        android:title="@string/service_name" />
     <item
         android:id="@+id/navigation_dashboard"
         android:icon="@drawable/ic_dashboard_black_24dp"

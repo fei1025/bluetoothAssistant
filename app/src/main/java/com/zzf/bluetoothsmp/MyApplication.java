@@ -6,6 +6,7 @@ import android.app.Application;
 import android.content.Context;
 import android.os.Bundle;
 
+import com.google.firebase.analytics.FirebaseAnalytics;
 import com.zzf.bluetoothsmp.entity.KeyboardEntity;
 import com.zzf.bluetoothsmp.entity.MessageMapper;
 import com.zzf.bluetoothsmp.utils.LanguageUtils;
@@ -22,6 +23,7 @@ public class MyApplication  extends Application {
     @SuppressLint("StaticFieldLeak")
     private static Context context;
     private static Application mApplication;
+    private FirebaseAnalytics mFirebaseAnalytics;
 
     @Override
     public void onCreate() {
@@ -29,7 +31,13 @@ public class MyApplication  extends Application {
         context=getApplicationContext();
         LitePal.initialize(this);
         mApplication = this;
+
         registerActivityLifecycleCallbacks();
+        mFirebaseAnalytics = FirebaseAnalytics.getInstance(this);
+        mFirebaseAnalytics.setAnalyticsCollectionEnabled(true);
+        Bundle bundle = new Bundle();
+        bundle.putString("start", "yes");
+        mFirebaseAnalytics.logEvent("share", bundle);
 
 
 

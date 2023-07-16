@@ -75,11 +75,14 @@ public class CheckUpdate {
                         appUpdateManager.unregisterListener(listener);
                     }
                 });
+                dialog.setNegativeButton(context.getString(R.string.cancel), new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.dismiss();
+                    }
+                });
                 dialog.show();
             }
         });
     }
-
-
-
 }

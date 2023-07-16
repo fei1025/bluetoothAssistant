@@ -11,6 +11,14 @@
         android:label="@string/bluetooth_assistant"
         tools:layout="@layout/fragment_home" />
 
+
+    <fragment
+        android:id="@+id/navigation_service"
+        android:name="com.zzf.bluetoothsmp.fragment.ServiceFragment"
+        android:label="@string/service_name"
+        tools:layout="@layout/fragment_home" />
+
+
     <fragment
         android:id="@+id/navigation_dashboard"
         android:name="com.zzf.bluetoothsmp.fragment.DashboardFragment"

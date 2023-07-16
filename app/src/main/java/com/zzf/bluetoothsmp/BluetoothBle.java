@@ -86,8 +86,8 @@ public class BluetoothBle {
          * @param gatt   返回的是本次连接的gatt对象
          * @param status
          */
-        @SuppressLint("MissingPermission")
-        @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+       // @SuppressLint("MissingPermission")
+        //@RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
         @Override
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
             Log.d(TAG, "onServicesDiscovered status" + status);

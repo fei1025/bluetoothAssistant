@@ -3,6 +3,7 @@ package com.zzf.bluetoothsmp;
 import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothSocket;
 import android.content.Context;
+import android.util.Log;
 
 import com.zzf.bluetoothsmp.entity.Msg;
 import com.zzf.bluetoothsmp.event.BluetoothType;
@@ -50,7 +51,9 @@ public class BluetoothServiceConnect {
                     return;
                 }
                 try {
-                    bufferedOutputStream.write(eventDatum.getContent().getBytes(StandardCharsets.UTF_8));
+                    String content = eventDatum.getContent();
+                    content=content;
+                    bufferedOutputStream.write(content.getBytes(StandardCharsets.UTF_8));
                     bufferedOutputStream.flush();
                 } catch (Exception e) {
                     e.printStackTrace();
@@ -71,10 +74,13 @@ public class BluetoothServiceConnect {
                 try {
                     while (!Thread.currentThread().isInterrupted() && ((readLine = bufferedInputStream.read(buf)) != -1)) {
                         String info = new String(buf, 0, readLine);
-                        Msg m = new Msg(info, Msg.TYPE_RECEIVED, bluetoothAdd);
-                        m.setSendUuid(senUuid);
-                        m.setBluetoothName(bluetoothName);
-                        StaticObject.mTaskQueue.put(m);
+                        String[] split = info.split("\r\n");
+                        for (int i = 0; i < split.length; i++) {
+                            Msg m = new Msg(split[i], Msg.TYPE_RECEIVED, bluetoothAdd);
+                            m.setSendUuid(senUuid);
+                            m.setBluetoothName(bluetoothName);
+                            StaticObject.mTaskQueue.put(m);
+                        }
                     }
                 } catch (Exception e) {
                     Msg m = new Msg(bluetoothAdd);

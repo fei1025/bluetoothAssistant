@@ -56,12 +56,16 @@ public class MainActivity extends BaseActivity {
     private boolean isCreate = false;
     private ActivityHomeBinding binding;
     private OnActivityDataChangedListener onActivityDataChangedListener;
+    public    BluetoothService bluetoothService;
 
 
     @SuppressLint("ResourceAsColor")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+
+
         setContentView(R.layout.activity_main);
 
         new CheckUpdate().check(MainActivity.this);
@@ -74,7 +78,7 @@ public class MainActivity extends BaseActivity {
         // Passing each menu ID as a set of Ids because each
         // menu should be considered as top level destinations.
         AppBarConfiguration appBarConfiguration = new AppBarConfiguration.Builder(
-                R.id.navigation_home, R.id.navigation_dashboard)
+                R.id.navigation_home,R.id.navigation_service, R.id.navigation_dashboard)
                 .build();
         NavController navController = Navigation.findNavController(this, R.id.nav_host_fragment_activity_home);
         NavigationUI.setupActionBarWithNavController(this, navController, appBarConfiguration);
@@ -255,7 +259,7 @@ public class MainActivity extends BaseActivity {
             //初始化蓝牙
             initBluetooth();
             try {
-                BluetoothService bluetoothService = new BluetoothService();
+                bluetoothService = new BluetoothService();
                 //创建监听服务
                 bluetoothService.createService(this, mBluetooth);
                 sendEvent.start();
@@ -462,4 +466,6 @@ public class MainActivity extends BaseActivity {
     public BluetoothAdapter getmBluetooth() {
         return mBluetooth;
     }
+
+
 }

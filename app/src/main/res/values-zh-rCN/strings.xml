@@ -48,5 +48,15 @@
     <string name="PleaseEnterButtonName">请输入按钮的名字</string>
     <string name="PleaseEnterSenMsg">请输入按下会发送的信息</string>
     <string name="UpEnterSenMsg">按钮松开会发送的信息</string>
+    <string name="service_name">服务</string>
+    <string name="edit">修改</string>
+    <string name="restore">默认</string>
+    <string name="bluetooth_port_error">蓝牙端口错误</string>
+    <string name="Wrong_format">格式错误,是UUID类型数据,</string>
+    <string name="Service_restart">服务重启中</string>
+    <string name="Not_modify">未改变</string>
+    <string name="success">成功</string>
+    <string name="bluetooth_service_port">蓝牙服务端口</string>
+    <string name="connect_bluetooth_port">连接蓝牙端口</string>
 
 </resources>
