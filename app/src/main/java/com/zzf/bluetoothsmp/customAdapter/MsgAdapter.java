@@ -9,7 +9,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import com.example.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.StaticObject;
 import com.zzf.bluetoothsmp.entity.BluetoothDrive;
 import com.zzf.bluetoothsmp.entity.MessageMapper;

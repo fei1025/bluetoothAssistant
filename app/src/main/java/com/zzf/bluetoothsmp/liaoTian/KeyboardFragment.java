@@ -23,7 +23,7 @@ import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.constraintlayout.widget.ConstraintSet;
 import androidx.fragment.app.Fragment;
 
-import com.example.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.entity.BluetoothDrive;
 import com.zzf.bluetoothsmp.entity.KeyboardEntity;
 import com.zzf.bluetoothsmp.utils.StringUtils;

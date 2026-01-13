@@ -5,7 +5,7 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
-import com.example.bluetoothsmp.databinding.FragmentDashboardBinding;
+import com.zzf.bluetoothsmp.databinding.FragmentDashboardBinding;
 import com.zzf.bluetoothsmp.customAdapter.InfoAdapter;
 import com.zzf.bluetoothsmp.entity.BluetoothDrive;
 import com.zzf.bluetoothsmp.entity.MessageMapper;
@@ -21,7 +21,7 @@ import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.example.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.R;
 
 public class DashboardFragment extends Fragment {
 

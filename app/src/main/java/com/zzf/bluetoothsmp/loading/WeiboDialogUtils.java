@@ -10,7 +10,7 @@ import android.view.WindowManager;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import com.example.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.R;
 
 public class WeiboDialogUtils {
 

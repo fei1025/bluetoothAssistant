@@ -15,7 +15,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 
-import com.example.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.customAdapter.MsgAdapter;
 import com.zzf.bluetoothsmp.entity.Msg;
 import com.zzf.bluetoothsmp.event.BluetoothType;
@@ -36,7 +36,7 @@ import androidx.appcompat.widget.Toolbar;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import static com.example.bluetoothsmp.R.string.ConnectTheInterrupt;
+import static com.zzf.bluetoothsmp.R.string.ConnectTheInterrupt;
 
 public class Liao_tian extends AppCompatActivity {
     static public List<Msg> msgList;
@@ -151,29 +151,19 @@ public class Liao_tian extends AppCompatActivity {
         return true;
     }*/
 
-/*
-    @SuppressLint("NonConstantResourceId")
+
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         //return super.onOptionsItemSelected(item);
-        switch (item.getItemId()) {
-            case R.id.Disconnect:
-                if ("0".equals(infoType)) {
-                    dialog(getString(R.string.bluetoothDisconnected));
-                } else {
-                    dialog(getString(R.string.cutBluetooth));
-                }
-                break;
-     */
-/*       case R.id.keyboardModer:
-               // Intent liaoTian = new Intent(this, keyboard.class);
-                Intent liaoTian = new Intent(this, Liantian_new.class);
-                this.startActivity(liaoTian);*//*
-
+        if (item.getItemId() == R.id.Disconnect) {
+            if ("0".equals(infoType)) {
+                dialog(getString(R.string.bluetoothDisconnected));
+            } else {
+                dialog(getString(R.string.cutBluetooth));
+            }
         }
         return true;
     }
-*/
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {

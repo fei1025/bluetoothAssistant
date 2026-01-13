@@ -10,7 +10,7 @@ import android.widget.ImageView;
 import android.widget.TextView;
 
 import com.zzf.bluetoothsmp.Fruit;
-import com.example.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.utils.ImageUtils;
 
 import java.util.List;

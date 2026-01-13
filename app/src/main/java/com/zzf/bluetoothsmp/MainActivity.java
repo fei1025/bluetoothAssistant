@@ -21,8 +21,8 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 
-import com.example.bluetoothsmp.R;
-import com.example.bluetoothsmp.databinding.ActivityHomeBinding;
+import com.zzf.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.databinding.ActivityHomeBinding;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.zzf.bluetoothsmp.base.BaseActivity;
 import com.zzf.bluetoothsmp.entity.Msg;
@@ -44,7 +44,7 @@ import androidx.navigation.Navigation;
 import androidx.navigation.ui.AppBarConfiguration;
 import androidx.navigation.ui.NavigationUI;
 
-import static com.example.bluetoothsmp.R.string.ConnectTheInterrupt;
+import static com.zzf.bluetoothsmp.R.string.ConnectTheInterrupt;
 
 public class MainActivity extends BaseActivity {
 
@@ -451,13 +451,11 @@ public class MainActivity extends BaseActivity {
         return true;
     }
 
-    @SuppressLint("NonConstantResourceId")
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         //return super.onOptionsItemSelected(item);
-        switch (item.getItemId()) {
-            case R.id.Disconnect:
-                break;
+        if (item.getItemId() == R.id.Disconnect) {
+            // Handle disconnect action
         }
         return true;
     }

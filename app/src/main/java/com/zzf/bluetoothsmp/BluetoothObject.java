@@ -10,7 +10,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 
-import com.example.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.entity.BluetoothDrive;
 import com.zzf.bluetoothsmp.entity.SystemInfoMapper;
 import com.zzf.bluetoothsmp.event.EventDispatcher;
@@ -26,7 +26,7 @@ import java.util.UUID;
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
-import static com.example.bluetoothsmp.R.string.bluetoothConnection;
+import static com.zzf.bluetoothsmp.R.string.bluetoothConnection;
 
 import org.litepal.LitePal;
 
@@ -44,6 +44,7 @@ public class BluetoothObject extends EventDispatcher {
     private RecyclerView msgRecyclerView;
     private Dialog loadingDialog;
     private boolean connectStart = false;
+    private volatile boolean shouldStop = false; // 用于安全停止线程的标志
 
     public Context getLanLaContex() {
         return lanLaContex;
@@ -55,12 +56,27 @@ public class BluetoothObject extends EventDispatcher {
 
     public void connect(@NonNull Context contex, Handler mHandler) {
         mcontex = contex;
+        shouldStop = false; // 重置停止标志
         loadingDialog = WeiboDialogUtils.createLoadingDialog(mcontex, contex.getString(bluetoothConnection));
         connectFlag.start();
         checkConnect.start();
         Waiting.start();
         this.mHandler = mHandler;
 
+    }
+
+    /**
+     * 安全地停止所有线程
+     * 使用 interrupt() 方法而不是已废弃的 stop() 方法
+     */
+    private void stopThreads() {
+        shouldStop = true;
+        if (connectFlag != null && connectFlag.isAlive()) {
+            connectFlag.interrupt();
+        }
+        if (checkConnect != null && checkConnect.isAlive()) {
+            checkConnect.interrupt();
+        }
     }
 
     private Thread Waiting = new Thread(new Runnable() {
@@ -71,11 +87,12 @@ public class BluetoothObject extends EventDispatcher {
                 if (!connectStart) {
                     WeiboDialogUtils.closeDialog(loadingDialog);
                     senHandlerMessage(0, mcontex.getString(R.string.connect_fails));
-                    connectFlag.stop();
-                    checkConnect.stop();
+                    stopThreads();
                     connectStart = false;
 
                 }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -94,10 +111,16 @@ public class BluetoothObject extends EventDispatcher {
     private Thread checkConnect = new Thread(new Runnable() {
         @Override
         public void run() {
-            while (true) {
+            while (!shouldStop && !Thread.currentThread().isInterrupted()) {
                 if (connectStart) {
                     WeiboDialogUtils.closeDialog(loadingDialog);
                     return;
+                }
+                try {
+                    Thread.sleep(100); // 避免 CPU 空转
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
                 }
             }
         }
@@ -107,6 +130,11 @@ public class BluetoothObject extends EventDispatcher {
         @Override
         public void run() {
             try {
+                // 检查是否应该停止
+                if (shouldStop || Thread.currentThread().isInterrupted()) {
+                    return;
+                }
+                
                 //BluetoothBle bluetoothBle = new BluetoothBle(bluetoothDevice);
                 SystemInfoMapper first = LitePal.findFirst(SystemInfoMapper.class);
                 if (first!=null && StringUtils.isNotEmpty(first.getClientSpp())) {
@@ -125,7 +153,25 @@ public class BluetoothObject extends EventDispatcher {
                     insecureRfcommSocketToServiceRecord = bluetoothDevice.createInsecureRfcommSocketToServiceRecord(UUID.fromString(SPP_UUID));
                 }
 
+                // 再次检查是否应该停止
+                if (shouldStop || Thread.currentThread().isInterrupted()) {
+                    return;
+                }
+
                 insecureRfcommSocketToServiceRecord.connect();
+                
+                // 连接后再次检查
+                if (shouldStop || Thread.currentThread().isInterrupted()) {
+                    if (insecureRfcommSocketToServiceRecord != null && insecureRfcommSocketToServiceRecord.isConnected()) {
+                        try {
+                            insecureRfcommSocketToServiceRecord.close();
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                    }
+                    return;
+                }
+                
                 BluetoothServiceConnect bluetoothServiceConnect = new BluetoothServiceConnect();
                 bluetoothServiceConnect.start(mcontex, insecureRfcommSocketToServiceRecord, SPP_UUID);
                 connectStart = true;

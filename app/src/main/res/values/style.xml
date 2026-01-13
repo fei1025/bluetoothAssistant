@@ -24,4 +24,15 @@
         <item name="overlapAnchor">false</item>
     </style>
 
+    <!-- BottomNavigationView 文字样式 -->
+    <style name="BottomNavigationView.Active" parent="TextAppearance.AppCompat">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">normal</item>
+    </style>
+
+    <style name="BottomNavigationView.Inactive" parent="TextAppearance.AppCompat">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textStyle">normal</item>
+    </style>
+
 </resources>

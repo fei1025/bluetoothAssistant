@@ -1,6 +1,6 @@
 package com.zzf.bluetoothsmp.liaoTian;
 
-import static com.example.bluetoothsmp.R.string.ConnectTheInterrupt;
+import static com.zzf.bluetoothsmp.R.string.ConnectTheInterrupt;
 
 import android.os.Bundle;
 import android.os.Handler;
@@ -22,8 +22,8 @@ import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.example.bluetoothsmp.R;
-import com.example.bluetoothsmp.databinding.FragmentLiantianNewBinding;
+import com.zzf.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.databinding.FragmentLiantianNewBinding;
 import com.zzf.bluetoothsmp.BluetoothServiceConnect;
 import com.zzf.bluetoothsmp.MyApplication;
 import com.zzf.bluetoothsmp.StaticObject;

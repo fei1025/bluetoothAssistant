@@ -12,8 +12,8 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 
-import com.example.bluetoothsmp.R;
-import com.example.bluetoothsmp.databinding.FragmentHomeBinding;
+import com.zzf.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.databinding.FragmentHomeBinding;
 import com.zzf.bluetoothsmp.BluetoothObject;
 import com.zzf.bluetoothsmp.Fruit;
 import com.zzf.bluetoothsmp.Liao_tian;
@@ -67,27 +67,23 @@ public class HomeFragment extends Fragment {
             public boolean onMenuItemClick(MenuItem item) {
                 int itemId = item.getItemId();
                 String url = "";
-                switch (itemId) {
-                    case R.id.ys:
-                        url = "https://zhangzhenfei.cn/archives/lan-ya-ce-shi-zhu-shou---yin-si-zheng-ce";
-                        break;
-                    case R.id.me:
-                        url = "https://zhangzhenfei.cn/archives/spp-lan-ya-zhu-shou---shi-yong-shuo-ming";
-                        break;
-                    case R.id.bt_menu_language:
-                        Locale prefAppLocale = LanguageUtils.getCurrentAppLocale();
-                        String language = prefAppLocale.getLanguage();
-                        if("zh".equals(language)){
-                            mainActivity.toSetLanguage(1);
-                            item.setIcon(R.drawable.ic_en);
+                if (itemId == R.id.ys) {
+                    url = "https://zhangzhenfei.cn/archives/lan-ya-ce-shi-zhu-shou---yin-si-zheng-ce";
+                } else if (itemId == R.id.me) {
+                    url = "https://zhangzhenfei.cn/archives/spp-lan-ya-zhu-shou---shi-yong-shuo-ming";
+                } else if (itemId == R.id.bt_menu_language) {
+                    Locale prefAppLocale = LanguageUtils.getCurrentAppLocale();
+                    String language = prefAppLocale.getLanguage();
+                    if("zh".equals(language)){
+                        mainActivity.toSetLanguage(1);
+                        item.setIcon(R.drawable.ic_en);
 
-                        }else if("en".equals(language)){
-                            mainActivity.toSetLanguage(0);
-                            item.setIcon(R.drawable.ic_zh);
+                    }else if("en".equals(language)){
+                        mainActivity.toSetLanguage(0);
+                        item.setIcon(R.drawable.ic_zh);
 
-                        }
-                        return true;
-
+                    }
+                    return true;
                 }
                 Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                 startActivity(intent);

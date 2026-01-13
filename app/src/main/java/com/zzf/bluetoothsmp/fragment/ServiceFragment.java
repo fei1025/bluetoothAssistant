@@ -22,7 +22,7 @@ import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.TextView;
 
-import com.example.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.R;
 import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.zzf.bluetoothsmp.BluetoothObject;
 import com.zzf.bluetoothsmp.BluetoothService;

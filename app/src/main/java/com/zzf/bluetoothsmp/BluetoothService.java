@@ -9,7 +9,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Message;
 
-import com.example.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.entity.BluetoothDrive;
 import com.zzf.bluetoothsmp.entity.SystemInfoMapper;
 import com.zzf.bluetoothsmp.liaoTian.Liantian_new;

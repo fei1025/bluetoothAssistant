@@ -6,7 +6,7 @@ import android.content.Context;
 
 import androidx.annotation.NonNull;
 
-import com.example.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.R;
 
 import java.util.HashMap;
 import java.util.Map;

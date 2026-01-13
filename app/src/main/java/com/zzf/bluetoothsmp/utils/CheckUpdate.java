@@ -15,7 +15,7 @@ import com.google.android.play.core.install.model.InstallStatus;
 import com.google.android.play.core.install.model.UpdateAvailability;
 
 import androidx.appcompat.app.AlertDialog;
-import com.example.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.R;
 
 public class CheckUpdate {
     private int MY_REQUEST_CODE = 01;
