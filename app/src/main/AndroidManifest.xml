@@ -3,8 +3,8 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.zzf.bluetoothsmp"
 
-    android:versionCode="22"
-    android:versionName="2.2" >
+    android:versionCode="23"
+    android:versionName="2.3" >
     <!-- 位置信息 -->
     <uses-permission
         android:name="android.permission.LOCAL_MAC_ADDRESS"

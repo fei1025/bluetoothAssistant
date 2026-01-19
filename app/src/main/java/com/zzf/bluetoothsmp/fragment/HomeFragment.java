@@ -68,9 +68,10 @@ public class HomeFragment extends Fragment {
                 int itemId = item.getItemId();
                 String url = "";
                 if (itemId == R.id.ys) {
-                    url = "https://zhangzhenfei.cn/archives/lan-ya-ce-shi-zhu-shou---yin-si-zheng-ce";
+                    url = "https://fei1025.github.io/privacy-policie/bluetto/";
                 } else if (itemId == R.id.me) {
-                    url = "https://zhangzhenfei.cn/archives/spp-lan-ya-zhu-shou---shi-yong-shuo-ming";
+                    // 使用说明,待定
+                    url = "https://fei1025.github.io/privacy-policie/bluetto/";
                 } else if (itemId == R.id.bt_menu_language) {
                     Locale prefAppLocale = LanguageUtils.getCurrentAppLocale();
                     String language = prefAppLocale.getLanguage();
