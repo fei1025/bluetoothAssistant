@@ -1,0 +1,49 @@
+name: Bug report
+description: Report a Bluetooth Assistant bug or compatibility issue.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the exact steps needed to reproduce the issue.
+      placeholder: |
+        1. Open the app
+        2. Scan for devices
+        3. Connect to ...
+        4. See error
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: App version or commit
+      placeholder: "2.3 or commit SHA"
+    validations:
+      required: true
+  - type: input
+    id: android-version
+    attributes:
+      label: Android version and device model
+      placeholder: "Android 14, Pixel 7"
+    validations:
+      required: true
+  - type: input
+    id: bluetooth-device
+    attributes:
+      label: Bluetooth device or module
+      placeholder: "HC-05, ESP32, custom BLE module"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Add logs, screenshots, or screen recordings when available.
