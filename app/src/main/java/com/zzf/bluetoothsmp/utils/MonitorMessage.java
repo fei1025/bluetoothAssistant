@@ -11,7 +11,7 @@ import org.litepal.LitePal;
 public class MonitorMessage {
 
 
-    public void MonitorAndSaveMse(){
+    public String MonitorAndSaveMse(){
        String UUID = java.util.UUID.randomUUID().toString();
 
         //监听接受数据
@@ -48,6 +48,7 @@ public class MonitorMessage {
             Msg msg = (Msg) l.getEventData()[0];
             saveMsg(msg);
         },UUID);
+        return UUID;
     }
 
 

@@ -37,15 +37,21 @@ public class EventDispatcher {
 
 
     protected void dispatchEvent(EventType eventType, Object... eventData) {
-        Map<String, EventListener> stringEventListenerMap = listenersMap.get(eventType);
-        if (stringEventListenerMap == null || stringEventListenerMap.isEmpty()) {
-            return;
+        ArrayList<EventListener> eventListeners;
+        synchronized (this) {
+            Map<String, EventListener> stringEventListenerMap = listenersMap.get(eventType);
+            if (stringEventListenerMap == null || stringEventListenerMap.isEmpty()) {
+                return;
+            }
+            eventListeners = new ArrayList<>(stringEventListenerMap.values());
         }
-        Collection<EventListener> values = stringEventListenerMap.values();
-        ArrayList<EventListener> eventListeners = new ArrayList<>(values);
         for (int i = 0; i < eventListeners.size(); i++) {
             EventListener eventListener = eventListeners.get(i);
-            eventListener.onEvent(buildEvent(eventType, eventData));
+            try {
+                eventListener.onEvent(buildEvent(eventType, eventData));
+            } catch (RuntimeException exception) {
+                exception.printStackTrace();
+            }
         }
     }
 

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="8dp">
+
+    <!-- Timestamp -->
+    <TextView
+        android:id="@+id/timestamp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/debug_timestamp"
+        android:textSize="10sp"
+        tools:text="14:32:05" />
+
+    <!-- Direction indicator -->
+    <TextView
+        android:id="@+id/direction"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        tools:text="SEND"
+        tools:textColor="@color/debug_hex" />
+
+    <!-- Hex content -->
+    <TextView
+        android:id="@+id/hex_content"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="monospace"
+        android:textColor="@color/debug_hex"
+        android:textSize="12sp"
+        tools:text="48 65 6C 6C 6F 0D 0A" />
+
+    <!-- ASCII content -->
+    <TextView
+        android:id="@+id/ascii_content"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="monospace"
+        android:textColor="@color/debug_ascii"
+        android:textSize="12sp"
+        tools:text="Hello.." />
+
+    <!-- Divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="4dp"
+        android:background="#E0E0E0" />
+
+</LinearLayout>

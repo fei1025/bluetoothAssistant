@@ -5,6 +5,7 @@ import static com.zzf.bluetoothsmp.R.string.ConnectTheInterrupt;
 import android.annotation.SuppressLint;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -28,6 +29,10 @@ import androidx.appcompat.widget.Toolbar;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.viewpager2.widget.ViewPager2;
 
 import com.google.android.material.tabs.TabLayoutMediator;
@@ -39,6 +44,7 @@ import com.zzf.bluetoothsmp.entity.BluetoothDrive;
 import com.zzf.bluetoothsmp.entity.MessageMapper;
 import com.zzf.bluetoothsmp.entity.Msg;
 import com.zzf.bluetoothsmp.event.BluetoothType;
+import com.zzf.bluetoothsmp.fragment.DebugFragment;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
 
 import org.litepal.LitePal;
@@ -51,9 +57,7 @@ public class Liantian_new extends AppCompatActivity {
 
     private ActivityLiantianNewBinding binding;
 
-    public static List<Fragment> listFragment = new ArrayList<>();
-
-    public static final int[] TAB_TITLES = new int[]{R.string.chat, R.string.keyboard};
+    public static final int[] TAB_TITLES = new int[]{R.string.chat, R.string.keyboard, R.string.debug};
 
 
     public String TAG = "liantian_new";
@@ -69,11 +73,13 @@ public class Liantian_new extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
         super.onCreate(savedInstanceState);
 
         binding = ActivityLiantianNewBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
-
+        applyEdgeToEdgeForChatPage();
+        initData();
 
         ViewPager2 viewPager = findViewById(R.id.view_pager);
         SectionsPagerAdapter adapter = new SectionsPagerAdapter(this);
@@ -92,15 +98,35 @@ public class Liantian_new extends AppCompatActivity {
         Toolbar toolbar = findViewById(R.id.lao_tian_toolbar);
         toolbar.setTitle("demo");
         setSupportActionBar(toolbar);
-        initData();
-        initFragment();
     }
 
-    public void initFragment() {
-        listFragment.clear();
-        listFragment.add(new ChatModeFragment(drive));
-        listFragment.add(new KeyboardFragment(drive));
+    private void applyEdgeToEdgeForChatPage() {
+        View appBar = findViewById(R.id.chat_appbar);
+        View pager = findViewById(R.id.view_pager);
+        if (appBar == null || pager == null) {
+            return;
+        }
+        final int appBarPaddingStart = appBar.getPaddingStart();
+        final int appBarPaddingEnd = appBar.getPaddingEnd();
+        final int appBarPaddingBottom = appBar.getPaddingBottom();
+
+        ViewCompat.setOnApplyWindowInsetsListener(binding.getRoot(), (v, insets) -> {
+            Insets statusInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars());
+            Insets navInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
+
+            appBar.setPaddingRelative(
+                    appBarPaddingStart,
+                    statusInsets.top,
+                    appBarPaddingEnd,
+                    appBarPaddingBottom
+            );
+
+            int bottomInset = navInsets.bottom;
+            pager.setPadding(navInsets.left, 0, navInsets.right, bottomInset);
+            return insets;
+        });
     }
+
     private void initData(){
         UUID = java.util.UUID.randomUUID().toString();
         Toolbar toolbar = findViewById(R.id.lao_tian_toolbar);

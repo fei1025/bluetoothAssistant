@@ -46,13 +46,13 @@ public class KeyboardFragment extends Fragment {
     private Liantian_new liantian_new;
     Map<Integer, KeyboardEntity> keymap = null;
 
-    public KeyboardFragment(BluetoothDrive drive) {
-        this.drive = drive;
+    public KeyboardFragment() {
     }
 
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
         liantian_new = (Liantian_new) getActivity();
+        drive = liantian_new.getDrive();
         View root = inflater.inflate(R.layout.frament_keyboard_moder, container, false);
         initData(root);
         return root;

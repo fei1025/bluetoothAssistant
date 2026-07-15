@@ -18,11 +18,12 @@ public class BaseActivity extends AppCompatActivity {
             list.add(Manifest.permission.BLUETOOTH_ADVERTISE);
             list.add(Manifest.permission.BLUETOOTH_SCAN);
             list.add(Manifest.permission.BLUETOOTH_CONNECT);
+        } else {
+            list.add(Manifest.permission.ACCESS_FINE_LOCATION);
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
+                list.add(Manifest.permission.WRITE_EXTERNAL_STORAGE);
+            }
         }
-        list.add(Manifest.permission.ACCESS_FINE_LOCATION);
-        list.add(Manifest.permission.ACCESS_COARSE_LOCATION);
-        list.add(Manifest.permission.BLUETOOTH_ADMIN);
-        list.add(Manifest.permission.BLUETOOTH);
         mPermissionListnew= list.toArray(new String[0]);
     }
     @Override

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="bluetooth_connection_in_progress">This device is connected or connecting</string>
     <string name="app_name">SPP Bluetooth assistant</string>
     <string name="send">send</string>
     <string name="not_connect">No connection permission. Please open the permission and try again</string>
@@ -58,5 +59,50 @@
     <string name="success">success</string>
     <string name="bluetooth_service_port">Bluetooth service port</string>
     <string name="connect_bluetooth_port">Connect Bluetooth port</string>
+    <string name="open_discoverable">Make device discoverable</string>
+    <string name="renew_discoverable">Extend visibility (5 minutes)</string>
+    <string name="discoverable_status_visible">Status: discoverable by other devices</string>
+    <string name="discoverable_status_hidden">Status: not discoverable by other devices</string>
+    <string name="discoverable_status_unavailable">Status: Bluetooth is off or unavailable</string>
+    <string name="discoverable_request_denied">Bluetooth visibility was not enabled</string>
+    <string name="debug">Debug</string>
+    <string name="debug_log">Debug log</string>
+    <string name="hex_view">Hex</string>
+    <string name="ascii_view">ASCII</string>
+    <string name="connection_status">Connection status</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+    <string name="device_info">Device information</string>
+    <string name="device_name">Device name</string>
+    <string name="device_address">Device address</string>
+    <string name="device_type">Device type</string>
+    <string name="bond_state">Bond state</string>
+    <string name="connection_duration">Connection duration</string>
+    <string name="signal_strength">Signal strength</string>
+    <string name="throughput">Throughput</string>
+    <string name="bytes_sent">Bytes sent</string>
+    <string name="bytes_received">Bytes received</string>
+    <string name="total_messages">Total messages</string>
+    <string name="clear_log">Clear log</string>
+    <string name="export_log">Export log</string>
+    <string name="send_test">Send test</string>
+    <string name="hex_input_hint">Enter hex data, for example: 48 65 6C 6C 6F</string>
+    <string name="append_crlf">Append \\r\\n</string>
+    <string name="send_once">Send once</string>
+    <string name="continuous_send">Continuous send</string>
+    <string name="stop_send">Stop</string>
+    <string name="interval_ms">Interval (ms)</string>
+    <string name="loop_count">Loop count</string>
+    <string name="diagnostics">Diagnostics</string>
+    <string name="run_diagnostics">Run diagnostics</string>
+    <string name="testing_uuid">Testing UUID connection...</string>
+    <string name="uuid_available">UUID available</string>
+    <string name="uuid_unavailable">UUID unavailable</string>
+    <string name="invalid_hex">Invalid hex format</string>
+    <string name="send_success">Sent successfully</string>
+    <string name="send_failed">Send failed</string>
+    <string name="no_connection">No connection</string>
+    <string name="log_exported">Log exported to Downloads</string>
+    <string name="export_failed">Export failed</string>
 
 </resources>

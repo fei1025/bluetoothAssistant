@@ -16,6 +16,9 @@ import android.widget.TextView;
 
 import androidx.annotation.Nullable;
 import androidx.annotation.NonNull;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.Observer;
 import androidx.lifecycle.ViewModelProvider;
@@ -56,8 +59,7 @@ public class ChatModeFragment extends Fragment {
     private Liantian_new liantian_new;
 
 
-    public ChatModeFragment(BluetoothDrive drive) {
-        this.drive = drive;
+    public ChatModeFragment() {
     }
 
     @Override
@@ -77,11 +79,15 @@ public class ChatModeFragment extends Fragment {
         drive=liantian_new.getDrive();
         initView(root);
         initData(root);
+        applyImeInsets(root);
         return root;
     }
 
     @Override
     public void onDestroyView() {
+        if (liantian_new != null && liantian_new.UUID != null) {
+            StaticObject.bluetoothEvent.deleteAllEventByUuid(liantian_new.UUID);
+        }
         super.onDestroyView();
         binding = null;
     }
@@ -94,10 +100,36 @@ public class ChatModeFragment extends Fragment {
         initMsg();
         MsgAdapter adapter = new MsgAdapter(msgList);
         msgRecyclerView.setAdapter(adapter);
-        Objects.requireNonNull(msgRecyclerView.getAdapter()).notifyItemChanged(msgList.size() - 1);
-        msgRecyclerView.scrollToPosition(msgList.size() - 1);
+        if (!msgList.isEmpty()) {
+            Objects.requireNonNull(msgRecyclerView.getAdapter()).notifyItemChanged(msgList.size() - 1);
+            msgRecyclerView.scrollToPosition(msgList.size() - 1);
+        }
     }
 
+
+    private void applyImeInsets(View root) {
+        View inputBar = root.findViewById(R.id.input_bar);
+        if (inputBar == null) {
+            return;
+        }
+        final int paddingStart = inputBar.getPaddingStart();
+        final int paddingTop = inputBar.getPaddingTop();
+        final int paddingEnd = inputBar.getPaddingEnd();
+        final int paddingBottom = inputBar.getPaddingBottom();
+
+        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
+            Insets navInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
+            Insets imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime());
+            int bottomInset = Math.max(navInsets.bottom, imeInsets.bottom);
+            inputBar.setPaddingRelative(
+                    paddingStart,
+                    paddingTop,
+                    paddingEnd,
+                    paddingBottom + bottomInset
+            );
+            return insets;
+        });
+    }
 
     public void initData(View root){
 
@@ -138,7 +170,7 @@ public class ChatModeFragment extends Fragment {
                 }
                 String s = inputText.getText().toString();
                 if (!"".equals(s)) {
-                    Msg eventDatum = new Msg(s, Msg.TYPE_SENT, drive.getDriveAdd());
+                    Msg eventDatum = new Msg(s + "\r\n", Msg.TYPE_SENT, drive.getDriveAdd());
                     try {
                         eventDatum.setBluetoothName(drive.getDriveName());
                         eventDatum.setBluetoothAdd(drive.getDriveAdd());

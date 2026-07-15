@@ -37,11 +37,13 @@ public class BluetoothService implements BluetoothBase {
     @SuppressLint("MissingPermission")
     public void createService() throws IOException {
         SystemInfoMapper first = LitePal.findFirst(SystemInfoMapper.class);
+        String serviceUuid = BluetoothObject.SPP_UUID;
 
         if (first!=null &&StringUtils.isNotEmpty(first.getServiceSpp())) {
             String serviceSpp = first.getServiceSpp();
             try {
                 UUID uuid = UUID.fromString(serviceSpp);
+                serviceUuid = serviceSpp;
                 bluetoothService = mBluetooth.listenUsingInsecureRfcommWithServiceRecord("bluetoothSPP", uuid);
             } catch (Exception e) {
                 senHandlerMessage(0, mcontex.getString(R.string.bluetooth_port_error));
@@ -52,6 +54,7 @@ public class BluetoothService implements BluetoothBase {
             bluetoothService = mBluetooth.listenUsingInsecureRfcommWithServiceRecord("bluetoothSPP", UUID.fromString(BluetoothObject.SPP_UUID));
 
         }
+        final String activeServiceUuid = serviceUuid;
         thread = new Thread(new Runnable() {
             @Override
             public void run() {
@@ -59,7 +62,9 @@ public class BluetoothService implements BluetoothBase {
                     while (!Thread.currentThread().isInterrupted()) {
                         accept = bluetoothService.accept();
                         BluetoothServiceConnect bluetoothServiceConnect = new BluetoothServiceConnect();
-                        bluetoothServiceConnect.start(mcontex, accept, BluetoothObject.SPP_UUID);
+                        if (!bluetoothServiceConnect.start(mcontex, accept, activeServiceUuid)) {
+                            continue;
+                        }
                         Intent liaoTian = new Intent(mcontex, Liantian_new.class);
                         BluetoothDevice bluetoothDevice = accept.getRemoteDevice();
                         BluetoothDrive drive = new BluetoothDrive();
@@ -69,10 +74,10 @@ public class BluetoothService implements BluetoothBase {
                         }
                         drive.setDriveName(name);
                         drive.setDriveAdd(bluetoothDevice.getAddress());
-                        drive.setUuid(BluetoothObject.SPP_UUID);
+                        drive.setUuid(activeServiceUuid);
                         liaoTian.putExtra("bluetoothName", name);
                         liaoTian.putExtra("bluetoothAdd", bluetoothDevice.getAddress());
-                        liaoTian.putExtra("bluetoothUUid", BluetoothObject.SPP_UUID);
+                        liaoTian.putExtra("bluetoothUUid", activeServiceUuid);
                         liaoTian.putExtra("BluetoothDrive", drive);
                         mcontex.startActivity(liaoTian);
                     }
@@ -85,11 +90,15 @@ public class BluetoothService implements BluetoothBase {
     }
 
     public void stop() {
-        thread.interrupt();
+        if (thread != null) {
+            thread.interrupt();
+        }
         try {
-            bluetoothService.close();
+            if (bluetoothService != null) {
+                bluetoothService.close();
+            }
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            e.printStackTrace();
         }
     }
     public void senHandlerMessage(Integer what, Object obj) {

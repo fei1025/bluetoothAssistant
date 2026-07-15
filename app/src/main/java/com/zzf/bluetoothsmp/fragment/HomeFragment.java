@@ -31,14 +31,11 @@ import java.util.Locale;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.widget.Toolbar;
-import androidx.fragment.app.Fragment;
-import androidx.fragment.app.FragmentManager;
-import androidx.fragment.app.FragmentTransaction;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
-public class HomeFragment extends Fragment {
+public class HomeFragment extends BaseFragment {
 
     private final String TAG = "HomeFragment";
     private FragmentHomeBinding binding;
@@ -58,6 +55,16 @@ public class HomeFragment extends Fragment {
         mainActivity = (MainActivity) getActivity();
         binding = FragmentHomeBinding.inflate(inflater, container, false);
         View root = binding.getRoot();
+
+
+        // ========== 新增：适配 Android 15 边到边模式 ==========
+        setupEdgeToEdge(root);
+
+
+
+
+
+
         Toolbar toolbar = binding.toolbar;
         toolbar.setTitle(getString(R.string.bluetooth_assistant));
 

@@ -3,6 +3,8 @@ package com.zzf.bluetoothsmp;
 import android.annotation.SuppressLint;
 import android.app.Dialog;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothSocket;
 import android.content.Context;
 import android.content.Intent;
@@ -43,8 +45,11 @@ public class BluetoothObject extends EventDispatcher {
     BluetoothSocket insecureRfcommSocketToServiceRecord;
     private RecyclerView msgRecyclerView;
     private Dialog loadingDialog;
-    private boolean connectStart = false;
+    private volatile boolean connectStart = false;
     private volatile boolean shouldStop = false; // 用于安全停止线程的标志
+    private Thread connectFlag;
+    private Thread checkConnect;
+    private Thread waitingThread;
 
     public Context getLanLaContex() {
         return lanLaContex;
@@ -56,12 +61,20 @@ public class BluetoothObject extends EventDispatcher {
 
     public void connect(@NonNull Context contex, Handler mHandler) {
         mcontex = contex;
+        this.mHandler = mHandler;
+        if (bluetoothDevice == null
+                || !StaticObject.connectionRegistry.beginConnect(bluetoothDevice.getAddress())) {
+            senHandlerMessage(0, contex.getString(R.string.bluetooth_connection_in_progress));
+            return;
+        }
         shouldStop = false; // 重置停止标志
         loadingDialog = WeiboDialogUtils.createLoadingDialog(mcontex, contex.getString(bluetoothConnection));
+        connectFlag = new Thread(this::connectSocket, "bt-connect");
+        checkConnect = new Thread(this::waitForConnection, "bt-connect-monitor");
+        waitingThread = new Thread(this::connectionTimeout, "bt-connect-timeout");
         connectFlag.start();
         checkConnect.start();
-        Waiting.start();
-        this.mHandler = mHandler;
+        waitingThread.start();
 
     }
 
@@ -77,11 +90,18 @@ public class BluetoothObject extends EventDispatcher {
         if (checkConnect != null && checkConnect.isAlive()) {
             checkConnect.interrupt();
         }
+        if (waitingThread != null && waitingThread.isAlive()) {
+            waitingThread.interrupt();
+        }
+        if (insecureRfcommSocketToServiceRecord != null && !connectStart) {
+            try {
+                insecureRfcommSocketToServiceRecord.close();
+            } catch (Exception ignored) {
+            }
+        }
     }
 
-    private Thread Waiting = new Thread(new Runnable() {
-        @Override
-        public void run() {
+    private void connectionTimeout() {
             try {
                 Thread.sleep(1000L * 15);
                 if (!connectStart) {
@@ -89,6 +109,7 @@ public class BluetoothObject extends EventDispatcher {
                     senHandlerMessage(0, mcontex.getString(R.string.connect_fails));
                     stopThreads();
                     connectStart = false;
+                    markConnectionFailed();
 
                 }
             } catch (InterruptedException e) {
@@ -96,8 +117,7 @@ public class BluetoothObject extends EventDispatcher {
             } catch (Exception e) {
                 e.printStackTrace();
             }
-        }
-    });
+    }
 
 
     public void senHandlerMessage(Integer what, Object obj) {
@@ -108,9 +128,7 @@ public class BluetoothObject extends EventDispatcher {
     }
 
 
-    private Thread checkConnect = new Thread(new Runnable() {
-        @Override
-        public void run() {
+    private void waitForConnection() {
             while (!shouldStop && !Thread.currentThread().isInterrupted()) {
                 if (connectStart) {
                     WeiboDialogUtils.closeDialog(loadingDialog);
@@ -123,13 +141,17 @@ public class BluetoothObject extends EventDispatcher {
                     break;
                 }
             }
-        }
-    });
-    private final Thread connectFlag = new Thread(new Runnable() {
-        @SuppressLint("MissingPermission")
-        @Override
-        public void run() {
+    }
+
+    @SuppressLint("MissingPermission")
+    private void connectSocket() {
+            String connectionUuid = SPP_UUID;
             try {
+                BluetoothManager manager = (BluetoothManager) mcontex.getSystemService(Context.BLUETOOTH_SERVICE);
+                BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
+                if (adapter != null && adapter.isDiscovering()) {
+                    adapter.cancelDiscovery();
+                }
                 // 检查是否应该停止
                 if (shouldStop || Thread.currentThread().isInterrupted()) {
                     return;
@@ -141,11 +163,13 @@ public class BluetoothObject extends EventDispatcher {
                     String clientSpp = first.getClientSpp();
                     try {
                         UUID uuid = UUID.fromString(clientSpp);
+                        connectionUuid = clientSpp;
                         insecureRfcommSocketToServiceRecord = bluetoothDevice.createInsecureRfcommSocketToServiceRecord(uuid);
                     } catch (Exception e) {
                         WeiboDialogUtils.closeDialog(loadingDialog);
                         connectStart = false;
                         senHandlerMessage(0, mcontex.getString(R.string.bluetooth_port_error));
+                        markConnectionFailed();
                         e.printStackTrace();
                         return;
                     }
@@ -173,7 +197,9 @@ public class BluetoothObject extends EventDispatcher {
                 }
                 
                 BluetoothServiceConnect bluetoothServiceConnect = new BluetoothServiceConnect();
-                bluetoothServiceConnect.start(mcontex, insecureRfcommSocketToServiceRecord, SPP_UUID);
+                if (!bluetoothServiceConnect.start(mcontex, insecureRfcommSocketToServiceRecord, connectionUuid)) {
+                    throw new IllegalStateException("Unable to initialize Bluetooth session");
+                }
                 connectStart = true;
                 //Intent liaoTian = new Intent(mcontex, Liao_tian.class);
                 Intent liaoTian = new Intent(mcontex, Liantian_new.class);
@@ -183,21 +209,33 @@ public class BluetoothObject extends EventDispatcher {
                 }
                 liaoTian.putExtra("bluetoothName", name);
                 liaoTian.putExtra("bluetoothAdd", bluetoothDevice.getAddress());
-                liaoTian.putExtra("bluetoothUUid", SPP_UUID);
+                liaoTian.putExtra("bluetoothUUid", connectionUuid);
                 BluetoothDrive drive = new BluetoothDrive();
                 drive.setDriveName(name);
                 drive.setDriveAdd(bluetoothDevice.getAddress());
-                drive.setUuid(SPP_UUID);
+                drive.setUuid(connectionUuid);
                 liaoTian.putExtra("BluetoothDrive", drive);
                 mcontex.startActivity(liaoTian);
             } catch (Exception e) {
                 WeiboDialogUtils.closeDialog(loadingDialog);
                 connectStart = false;
                 senHandlerMessage(0, mcontex.getString(R.string.connect_fails));
+                markConnectionFailed();
                 e.printStackTrace();
             }
+    }
+
+    public void cancelConnect() {
+        stopThreads();
+        WeiboDialogUtils.closeDialog(loadingDialog);
+        markConnectionFailed();
+    }
+
+    private void markConnectionFailed() {
+        if (bluetoothDevice != null) {
+            StaticObject.connectionRegistry.set(bluetoothDevice.getAddress(), BluetoothConnectionState.FAILED);
         }
-    });
+    }
 
     public BluetoothDevice getBluetoothDevice() {
         return bluetoothDevice;

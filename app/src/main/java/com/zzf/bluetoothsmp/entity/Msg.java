@@ -1,8 +1,9 @@
 package com.zzf.bluetoothsmp.entity;
 
 import java.util.Date;
+import java.nio.charset.StandardCharsets;
 
-public class Msg  implements Comparable<Msg>{
+public class Msg {
 
     public static final int TYPE_RECEIVED =0;
     public  static final int TYPE_SENT =1;
@@ -11,6 +12,7 @@ public class Msg  implements Comparable<Msg>{
     //这里是发送方的名字
     public String bluetoothName;
     private String content;
+    private byte[] payload;
     private int type;
     //发送方的uuid
     public String sendUuid;
@@ -36,6 +38,22 @@ public class Msg  implements Comparable<Msg>{
         this.content = content;
         this.type = type;
         this.bluetoothAdd = bluetoothAdd;
+    }
+
+    public Msg(byte[] payload, int type, String bluetoothAdd) {
+        this.payload = payload == null ? null : payload.clone();
+        this.content = payload == null ? null : new String(payload, StandardCharsets.UTF_8);
+        this.type = type;
+        this.bluetoothAdd = bluetoothAdd;
+    }
+
+    public byte[] getPayload() {
+        return payload == null ? null : payload.clone();
+    }
+
+    public byte[] getPayloadOrUtf8() {
+        return payload != null ? payload.clone()
+                : (content == null ? new byte[0] : content.getBytes(StandardCharsets.UTF_8));
     }
 
     public String getSendUuid() {
@@ -84,11 +102,6 @@ public class Msg  implements Comparable<Msg>{
 
     public void setStateType(int stateType) {
         this.stateType = stateType;
-    }
-
-    @Override
-    public int compareTo(Msg o) {
-        return -1;
     }
 
     @Override

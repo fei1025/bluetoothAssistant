@@ -25,5 +25,10 @@
         android:label="@string/history"
         tools:layout="@layout/fragment_dashboard" />
 
+    <fragment
+        android:id="@+id/navigation_debug"
+        android:name="com.zzf.bluetoothsmp.fragment.DebugFragment"
+        android:label="@string/debug"
+        tools:layout="@layout/fragment_debug" />
 
 </navigation>

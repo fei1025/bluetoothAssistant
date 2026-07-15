@@ -20,7 +20,13 @@ public class SectionsPagerAdapter extends FragmentStateAdapter {
     @NonNull
     @Override
     public Fragment createFragment(int position) {
-         return Liantian_new.listFragment.get(position);
+        if (position == 0) {
+            return new ChatModeFragment();
+        }
+        if (position == 1) {
+            return new KeyboardFragment();
+        }
+        return com.zzf.bluetoothsmp.fragment.DebugFragment.newInstance(true);
     }
 
     @Override

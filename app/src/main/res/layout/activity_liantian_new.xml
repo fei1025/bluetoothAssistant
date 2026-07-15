@@ -8,6 +8,7 @@
     tools:context="com.zzf.bluetoothsmp.liaoTian.Liantian_new">
 
     <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/chat_appbar"
         android:layout_height="wrap_content"
         android:layout_width="match_parent"
         android:theme="@style/Theme.BluetoothSMP.AppBarOverlay">

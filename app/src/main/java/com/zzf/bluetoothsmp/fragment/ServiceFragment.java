@@ -3,14 +3,19 @@ package com.zzf.bluetoothsmp.fragment;
 import androidx.appcompat.widget.Toolbar;
 
 import android.app.AlertDialog;
-import android.app.Dialog;
-import android.app.ProgressDialog;
+import android.bluetooth.BluetoothAdapter;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.DialogInterface;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.app.Activity;
 import android.os.Bundle;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
+import androidx.core.content.ContextCompat;
 
 import android.os.Message;
 import android.text.Editable;
@@ -28,18 +33,32 @@ import com.zzf.bluetoothsmp.BluetoothObject;
 import com.zzf.bluetoothsmp.BluetoothService;
 import com.zzf.bluetoothsmp.MainActivity;
 import com.zzf.bluetoothsmp.entity.SystemInfoMapper;
-import com.zzf.bluetoothsmp.loading.WeiboDialogUtils;
 import com.zzf.bluetoothsmp.utils.StringUtils;
+import com.zzf.bluetoothsmp.utils.ToastUtil;
 
 import org.litepal.LitePal;
-import org.w3c.dom.Text;
 
 import java.io.IOException;
 import java.util.UUID;
 
-public class ServiceFragment extends Fragment {
+public class ServiceFragment extends BaseFragment {
+
+    private static final int REQUEST_DISCOVERABLE = 0x31;
+    private static final int DISCOVERABLE_DURATION_SECONDS = 300;
 
     private MainActivity mainActivity;
+    private TextView discoverableStatus;
+    private Button openDiscoverable;
+    private boolean scanModeReceiverRegistered;
+
+    private final BroadcastReceiver scanModeReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            if (BluetoothAdapter.ACTION_SCAN_MODE_CHANGED.equals(intent.getAction())) {
+                updateDiscoverableStatus();
+            }
+        }
+    };
 
 
     public static ServiceFragment newInstance() {
@@ -50,6 +69,9 @@ public class ServiceFragment extends Fragment {
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
                              @Nullable Bundle savedInstanceState) {
         View inflate = inflater.inflate(R.layout.fragment_service, container, false);
+        // 适配 Android 15 边缘到边模式
+        setupEdgeToEdge(inflate);
+
         mainActivity = (MainActivity) getActivity();
         BluetoothService bluetoothService = mainActivity.bluetoothService;
 
@@ -57,11 +79,12 @@ public class ServiceFragment extends Fragment {
         toolbar.setTitle(R.string.service_name);
 
 
+
         init(inflate);
         initClient(inflate);
+        initDiscoverable(inflate);
         return inflate;
     }
-
 
     public void init(View inflate) {
 
@@ -211,15 +234,87 @@ public class ServiceFragment extends Fragment {
 
     }
 
+    private void initDiscoverable(View inflate) {
+        discoverableStatus = inflate.findViewById(R.id.discoverableStatus);
+        openDiscoverable = inflate.findViewById(R.id.openDiscoverable);
+        openDiscoverable.setOnClickListener(v -> {
+            Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
+            discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, DISCOVERABLE_DURATION_SECONDS);
+            startActivityForResult(discoverableIntent, REQUEST_DISCOVERABLE);
+        });
+        updateDiscoverableStatus();
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
+        if (!scanModeReceiverRegistered) {
+            IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_SCAN_MODE_CHANGED);
+            ContextCompat.registerReceiver(requireContext(), scanModeReceiver, filter,
+                    ContextCompat.RECEIVER_EXPORTED);
+            scanModeReceiverRegistered = true;
+        }
+        updateDiscoverableStatus();
+    }
+
+    @Override
+    public void onStop() {
+        if (scanModeReceiverRegistered) {
+            requireContext().unregisterReceiver(scanModeReceiver);
+            scanModeReceiverRegistered = false;
+        }
+        super.onStop();
+    }
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_DISCOVERABLE) {
+            updateDiscoverableStatus();
+            if (resultCode == Activity.RESULT_CANCELED) {
+                ToastUtil.toastWord(requireContext(), getString(R.string.discoverable_request_denied));
+            }
+        }
+    }
+
+    @SuppressWarnings("MissingPermission")
+    private void updateDiscoverableStatus() {
+        if (discoverableStatus == null || openDiscoverable == null || mainActivity == null) {
+            return;
+        }
+        BluetoothAdapter adapter = mainActivity.getmBluetooth();
+        if (adapter == null || !adapter.isEnabled()) {
+            discoverableStatus.setText(R.string.discoverable_status_unavailable);
+            discoverableStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.red));
+            openDiscoverable.setEnabled(false);
+            return;
+        }
+
+        openDiscoverable.setEnabled(true);
+        boolean discoverable = adapter.getScanMode()
+                == BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE;
+        if (discoverable) {
+            discoverableStatus.setText(R.string.discoverable_status_visible);
+            discoverableStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.teal_700));
+            openDiscoverable.setText(R.string.renew_discoverable);
+        } else {
+            discoverableStatus.setText(R.string.discoverable_status_hidden);
+            discoverableStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.red));
+            openDiscoverable.setText(R.string.open_discoverable);
+        }
+    }
+
     public void senHandlerMessage(Integer what, Object obj) {
         Message msg = new Message();
         msg.what = what;
         msg.obj = obj;
-       mainActivity.mHandler.sendMessage(msg);
+        mainActivity.mHandler.sendMessage(msg);
     }
+
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-
+        discoverableStatus = null;
+        openDiscoverable = null;
     }
 }

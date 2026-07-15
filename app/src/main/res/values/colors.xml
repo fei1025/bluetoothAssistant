@@ -12,4 +12,9 @@
 
     <color name="colorChatLeft">#ffffff</color>
     <color name="colorChatRight">#008577</color>
+    <color name="debug_log_sent">#E3F2FD</color>
+    <color name="debug_log_received">#F5F5F5</color>
+    <color name="debug_hex">#1565C0</color>
+    <color name="debug_ascii">#2E7D32</color>
+    <color name="debug_timestamp">#757575</color>
 </resources>

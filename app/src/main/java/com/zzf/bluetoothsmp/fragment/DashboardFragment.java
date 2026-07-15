@@ -5,6 +5,13 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+import androidx.appcompat.widget.Toolbar;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
+
+import com.zzf.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.databinding.FragmentDashboardBinding;
 import com.zzf.bluetoothsmp.customAdapter.InfoAdapter;
 import com.zzf.bluetoothsmp.entity.BluetoothDrive;
@@ -15,19 +22,20 @@ import org.litepal.LitePal;
 import java.util.ArrayList;
 import java.util.List;
 
-import androidx.annotation.NonNull;
-import androidx.appcompat.widget.Toolbar;
-import androidx.fragment.app.Fragment;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
-
-import com.zzf.bluetoothsmp.R;
-
-public class DashboardFragment extends Fragment {
+public class DashboardFragment extends BaseFragment {
 
     private static final String TAG = "DashboardFragment";
+    private static final String ARG_EMBEDDED = "arg_embedded";
     private FragmentDashboardBinding binding;
     RecyclerView msgRecyclerView;
+
+    public static DashboardFragment newInstance(boolean embedded) {
+        DashboardFragment fragment = new DashboardFragment();
+        Bundle args = new Bundle();
+        args.putBoolean(ARG_EMBEDDED, embedded);
+        fragment.setArguments(args);
+        return fragment;
+    }
 
     public View onCreateView(@NonNull LayoutInflater inflater,
                              ViewGroup container, Bundle savedInstanceState) {
@@ -36,6 +44,18 @@ public class DashboardFragment extends Fragment {
         View root = binding.getRoot();
         Toolbar toolbar = binding.toolbar;
         toolbar.setTitle(R.string.history);
+
+        boolean embedded = false;
+        Bundle args = getArguments();
+        if (args != null) {
+            embedded = args.getBoolean(ARG_EMBEDDED, false);
+        }
+        if (embedded) {
+            toolbar.setVisibility(View.GONE);
+        }
+
+        // 适配 Android 15 边缘到边模式
+        setupEdgeToEdge(root);
 
         List<BluetoothDrive> all = LitePal.findAll(BluetoothDrive.class);
         if (all.size() == 0) {
