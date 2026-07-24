@@ -11,6 +11,7 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -25,12 +26,10 @@ import com.zzf.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.databinding.ActivityHomeBinding;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.zzf.bluetoothsmp.base.BaseActivity;
-import com.zzf.bluetoothsmp.base.AppConstants;
 import com.zzf.bluetoothsmp.entity.Msg;
 import com.zzf.bluetoothsmp.utils.CheckUpdate;
 import com.zzf.bluetoothsmp.utils.LanguageUtils;
 import com.zzf.bluetoothsmp.utils.MonitorMessage;
-import com.zzf.bluetoothsmp.utils.SPUtils;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
 
 import java.util.Locale;
@@ -56,6 +55,8 @@ public class MainActivity extends BaseActivity {
     private static final String TAG = "MainActivity";
     private static final int REQ_ENABLE_BT = 0x11;
     private static final int REQ_DISCOVERABLE_BT = 0x12;
+    private static final int REQ_MENU_ENABLE_BT = 0x13;
+    private static final int REQ_MENU_DISCOVERABLE_BT = 0x14;
     private static final int DISCOVERABLE_DURATION_SECONDS = 300;
     private final int mOpenCode = 0x01;
     public int scan = 1;
@@ -65,6 +66,7 @@ public class MainActivity extends BaseActivity {
     private String monitorListenerUuid;
     private ActivityHomeBinding binding;
     private OnActivityDataChangedListener onActivityDataChangedListener;
+    private MenuItem discoverableMenuItem;
     public    BluetoothService bluetoothService;
 
 
@@ -279,15 +281,14 @@ public class MainActivity extends BaseActivity {
     }
 
     private void requestDiscoverableIfNeededThenContinueInit() {
-        boolean firstPromptDone = (boolean) SPUtils.get(this, AppConstants.BT_DISCOVERABLE_FIRST_PROMPT_DONE, false);
-        if (!firstPromptDone) {
+        if (mBluetooth != null
+                && mBluetooth.getScanMode() != BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                     && ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADVERTISE)
                     != PackageManager.PERMISSION_GRANTED) {
                 ActivityCompat.requestPermissions(this, mPermissionListnew, mOpenCode);
                 return;
             }
-            SPUtils.put(this, AppConstants.BT_DISCOVERABLE_FIRST_PROMPT_DONE, true);
             Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
             discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, DISCOVERABLE_DURATION_SECONDS);
             startActivityForResult(discoverableIntent, REQ_DISCOVERABLE_BT);
@@ -496,6 +497,21 @@ public class MainActivity extends BaseActivity {
     @Override
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_MENU_ENABLE_BT) {
+            if (resultCode == RESULT_OK) {
+                requestDiscoverableFromMenu();
+            } else {
+                updateDiscoverableMenuItem();
+            }
+            return;
+        }
+        if (requestCode == REQ_MENU_DISCOVERABLE_BT) {
+            updateDiscoverableMenuItem();
+            if (resultCode == RESULT_CANCELED) {
+                ToastUtil.toastWord(this, getString(R.string.discoverable_request_denied));
+            }
+            return;
+        }
         if (requestCode == REQ_ENABLE_BT) {
             if (resultCode == RESULT_OK) {
                 requestDiscoverableIfNeededThenContinueInit();
@@ -507,6 +523,103 @@ public class MainActivity extends BaseActivity {
         if (requestCode == REQ_DISCOVERABLE_BT) {
             continueBluetoothInit();
         }
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(@NonNull Menu menu) {
+        getMenuInflater().inflate(R.menu.home_menu, menu);
+        discoverableMenuItem = menu.findItem(R.id.home_discoverable);
+        updateDiscoverableMenuItem();
+        MenuItem languageItem = menu.findItem(R.id.bt_menu_language);
+        Locale prefAppLocale = LanguageUtils.getCurrentAppLocale();
+        String language = prefAppLocale.getLanguage();
+        if ("zh".equals(language)) {
+            languageItem.setIcon(R.drawable.ic_en);
+        } else if ("en".equals(language)) {
+            languageItem.setIcon(R.drawable.ic_zh);
+        }
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        int itemId = item.getItemId();
+        if (itemId == R.id.home_discoverable) {
+            requestDiscoverableFromMenu();
+            return true;
+        } else if (itemId == R.id.bt_menu_language) {
+            Locale prefAppLocale = LanguageUtils.getCurrentAppLocale();
+            String language = prefAppLocale.getLanguage();
+            if ("zh".equals(language)) {
+                toSetLanguage(1);
+                item.setIcon(R.drawable.ic_en);
+            } else if ("en".equals(language)) {
+                toSetLanguage(0);
+                item.setIcon(R.drawable.ic_zh);
+            }
+            return true;
+        } else if (itemId == R.id.ys || itemId == R.id.me) {
+            Intent intent = new Intent(Intent.ACTION_VIEW,
+                    Uri.parse("https://fei1025.github.io/privacy-policie/bluetto/"));
+            startActivity(intent);
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+    @SuppressLint("MissingPermission")
+    private void requestDiscoverableFromMenu() {
+        initBluetoothAdapter();
+        if (mBluetooth == null) {
+            updateDiscoverableMenuItem();
+            return;
+        }
+        if (!mBluetooth.isEnabled()) {
+            Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+            startActivityForResult(enableIntent, REQ_MENU_ENABLE_BT);
+            return;
+        }
+        Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
+        discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION,
+                DISCOVERABLE_DURATION_SECONDS);
+        startActivityForResult(discoverableIntent, REQ_MENU_DISCOVERABLE_BT);
+    }
+
+    @SuppressLint("MissingPermission")
+    private void updateDiscoverableMenuItem() {
+        if (discoverableMenuItem == null) {
+            return;
+        }
+        BluetoothAdapter adapter = mBluetooth;
+        if (adapter == null) {
+            BluetoothManager bluetoothManager =
+                    (BluetoothManager) getSystemService(Context.BLUETOOTH_SERVICE);
+            if (bluetoothManager != null) {
+                adapter = bluetoothManager.getAdapter();
+            }
+        }
+        if (adapter == null) {
+            discoverableMenuItem.setEnabled(false);
+            discoverableMenuItem.setIcon(R.drawable.ic_visibility_off);
+            discoverableMenuItem.setTitle(R.string.discoverable_status_unavailable);
+            return;
+        }
+
+        discoverableMenuItem.setEnabled(true);
+        if (!adapter.isEnabled()) {
+            discoverableMenuItem.setIcon(R.drawable.ic_visibility_off);
+            discoverableMenuItem.setTitle(R.string.discoverable_status_unavailable);
+            return;
+        }
+
+        boolean discoverable = adapter.getScanMode()
+                == BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE;
+        discoverableMenuItem.setIcon(discoverable
+                ? R.drawable.ic_visibility
+                : R.drawable.ic_visibility_off);
+        discoverableMenuItem.setTitle(discoverable
+                ? R.string.renew_discoverable
+                : R.string.open_discoverable);
     }
 
     public Handler mHandler = new Handler(Looper.getMainLooper()) {
@@ -523,23 +636,6 @@ public class MainActivity extends BaseActivity {
             }
         }
     };
-
-
-    // 创建多选择框
-    @Override
-    public boolean onCreateOptionsMenu(@NonNull Menu menu) {
-        getMenuInflater().inflate(R.menu.home_menu, menu);
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        //return super.onOptionsItemSelected(item);
-        if (item.getItemId() == R.id.Disconnect) {
-            // Handle disconnect action
-        }
-        return true;
-    }
 
 
     public BluetoothAdapter getmBluetooth() {

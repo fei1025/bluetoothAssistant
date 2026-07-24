@@ -12,6 +12,13 @@
         />
 
     <item
+        android:id="@+id/home_discoverable"
+        android:title="@string/open_discoverable"
+        android:icon="@drawable/ic_visibility_off"
+        app:showAsAction="always"
+        />
+
+    <item
         android:id="@+id/bt_menu_language"
         android:title="@string/switchLanguages"
         android:icon="@drawable/ic_zh"
