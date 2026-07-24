@@ -6,12 +6,12 @@ plugins {
 
 android {
     namespace 'com.zzf.bluetoothsmp'
-    compileSdk 35
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.zzf.bluetoothsmp"
         minSdk 21
-        targetSdk 35
+        targetSdk 36
         versionCode 23
         versionName "2.3"
 
