@@ -51,6 +51,9 @@ android {
 
 dependencies {
 
+    // Google Play Billing for the non-consumable supporter badge.
+    implementation 'com.android.billingclient:billing:9.1.0'
+
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.14.0'
     implementation 'androidx.core:core:1.16.0'

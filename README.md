@@ -59,6 +59,13 @@ The debug APK is generated under:
 app/build/outputs/apk/debug/
 ```
 
+## Billing Development
+
+The Google Play one-time supporter badge implementation is documented in
+[docs/SUPPORTER_BADGE_BILLING.md](docs/SUPPORTER_BADGE_BILLING.md). Read it before
+changing the product ID, purchase lifecycle, entitlement rules, or Play Console
+configuration.
+
 ## Permissions And Privacy
 
 Bluetooth Assistant requests Bluetooth and location-related permissions because Android requires them for Bluetooth discovery and connection workflows on different Android versions. The project also includes Firebase dependencies for analytics/crash reporting and uses network permission for update or reporting integrations.

@@ -104,5 +104,15 @@
     <string name="no_connection">无连接</string>
     <string name="log_exported">日志已导出到 Downloads</string>
     <string name="export_failed">导出失败</string>
+    <string name="support_developer">支持开发者</string>
+    <string name="supporter_dialog_title">支持开发者</string>
+    <string name="supporter_purchase_description">支付 %1$s，一次性获得永久支持者徽章。不会自动续费。</string>
+    <string name="supporter_loading">正在连接 Google Play…</string>
+    <string name="supporter_pending">付款尚未完成。付款完成后，徽章会自动解锁。</string>
+    <string name="supporter_badge_unlocked">支持者徽章已永久解锁</string>
+    <string name="supporter_unavailable">暂时无法连接 Google Play 或商品尚不可用，请稍后重试。</string>
+    <string name="supporter_buy">获得支持者徽章</string>
+    <string name="supporter_restore">恢复购买</string>
+    <string name="close">关闭</string>
 
 </resources>

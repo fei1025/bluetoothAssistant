@@ -12,6 +12,20 @@
         />
 
     <item
+        android:id="@+id/support_developer"
+        android:title="@string/support_developer"
+        />
+
+    <item
+        android:id="@+id/supporter_badge_status"
+        android:title="@string/supporter_badge_unlocked"
+        android:icon="@drawable/ic_supporter_badge"
+        android:enabled="false"
+        android:visible="false"
+        app:showAsAction="always"
+        />
+
+    <item
         android:id="@+id/home_discoverable"
         android:title="@string/open_discoverable"
         android:icon="@drawable/ic_visibility_off"

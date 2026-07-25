@@ -20,8 +20,11 @@ import android.os.Message;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
+import android.widget.Button;
 
 import com.zzf.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.billing.SupporterBillingManager;
 import com.zzf.bluetoothsmp.databinding.ActivityHomeBinding;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.zzf.bluetoothsmp.base.BaseActivity;
@@ -69,6 +72,10 @@ public class MainActivity extends BaseActivity {
     private ActivityHomeBinding binding;
     private OnActivityDataChangedListener onActivityDataChangedListener;
     private MenuItem discoverableMenuItem;
+    private MenuItem supporterBadgeMenuItem;
+    private AlertDialog supporterDialog;
+    private SupporterBillingManager supporterBillingManager;
+    private SupporterBillingManager.Snapshot supporterSnapshot;
     public    BluetoothService bluetoothService;
 
 
@@ -101,6 +108,13 @@ public class MainActivity extends BaseActivity {
         NavController navController = Navigation.findNavController(this, R.id.nav_host_fragment_activity_home);
         NavigationUI.setupActionBarWithNavController(this, navController, appBarConfiguration);
         NavigationUI.setupWithNavController(binding.navView, navController);
+
+        supporterBillingManager = new SupporterBillingManager(this);
+        supporterBillingManager.setListener(snapshot -> {
+            supporterSnapshot = snapshot;
+            updateSupporterUi();
+        });
+        supporterBillingManager.start();
 
         monitorListenerUuid = new MonitorMessage().MonitorAndSaveMse();
 
@@ -198,6 +212,9 @@ public class MainActivity extends BaseActivity {
 
     public void onResume() {
         super.onResume();
+        if (supporterBillingManager != null) {
+            supporterBillingManager.syncPurchases();
+        }
     }
 
 
@@ -397,6 +414,13 @@ public class MainActivity extends BaseActivity {
         if (bluetoothService != null) {
             bluetoothService.stop();
         }
+        if (supporterDialog != null) {
+            supporterDialog.dismiss();
+            supporterDialog = null;
+        }
+        if (supporterBillingManager != null) {
+            supporterBillingManager.close();
+        }
         StaticObject.closeAllConnections();
         sendEvent.interrupt();
         super.onDestroy();
@@ -533,7 +557,9 @@ public class MainActivity extends BaseActivity {
     public boolean onCreateOptionsMenu(@NonNull Menu menu) {
         getMenuInflater().inflate(R.menu.home_menu, menu);
         discoverableMenuItem = menu.findItem(R.id.home_discoverable);
+        supporterBadgeMenuItem = menu.findItem(R.id.supporter_badge_status);
         updateDiscoverableMenuItem();
+        updateSupporterUi();
         MenuItem languageItem = menu.findItem(R.id.bt_menu_language);
         Locale prefAppLocale = LanguageUtils.getCurrentAppLocale();
         String language = prefAppLocale.getLanguage();
@@ -550,6 +576,9 @@ public class MainActivity extends BaseActivity {
         int itemId = item.getItemId();
         if (itemId == R.id.home_discoverable) {
             requestDiscoverableFromMenu();
+            return true;
+        } else if (itemId == R.id.support_developer) {
+            showSupporterDialog();
             return true;
         } else if (itemId == R.id.bt_menu_language) {
             Locale prefAppLocale = LanguageUtils.getCurrentAppLocale();
@@ -569,6 +598,81 @@ public class MainActivity extends BaseActivity {
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    private void showSupporterDialog() {
+        if (supporterDialog != null && supporterDialog.isShowing()) {
+            updateSupporterUi();
+            return;
+        }
+        supporterDialog = new AlertDialog.Builder(this)
+                .setTitle(R.string.supporter_dialog_title)
+                .setMessage(getSupporterMessage())
+                .setPositiveButton(R.string.supporter_buy, null)
+                .setNeutralButton(R.string.supporter_restore, null)
+                .setNegativeButton(R.string.close, null)
+                .create();
+        supporterDialog.setOnShowListener(dialog -> {
+            Button purchaseButton = supporterDialog.getButton(AlertDialog.BUTTON_POSITIVE);
+            purchaseButton.setOnClickListener(view -> {
+                if (supporterBillingManager != null) {
+                    supporterBillingManager.launchPurchase(MainActivity.this);
+                }
+            });
+            Button restoreButton = supporterDialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+            restoreButton.setOnClickListener(view -> {
+                if (supporterBillingManager != null) {
+                    supporterBillingManager.syncPurchases();
+                }
+            });
+            updateSupporterUi();
+        });
+        supporterDialog.setOnDismissListener(dialog -> supporterDialog = null);
+        supporterDialog.show();
+    }
+
+    private void updateSupporterUi() {
+        boolean owned = supporterSnapshot != null && supporterSnapshot.isOwned();
+        if (supporterBadgeMenuItem != null) {
+            supporterBadgeMenuItem.setVisible(owned);
+        }
+        if (supporterDialog == null || !supporterDialog.isShowing()) {
+            return;
+        }
+        supporterDialog.setMessage(getSupporterMessage());
+        Button purchaseButton = supporterDialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        Button restoreButton = supporterDialog.getButton(AlertDialog.BUTTON_NEUTRAL);
+        if (purchaseButton == null || restoreButton == null) {
+            return;
+        }
+        purchaseButton.setVisibility(owned ? View.GONE : View.VISIBLE);
+        restoreButton.setVisibility(owned ? View.GONE : View.VISIBLE);
+        purchaseButton.setEnabled(supporterSnapshot != null
+                && supporterSnapshot.getState() == SupporterBillingManager.State.AVAILABLE);
+    }
+
+    private String getSupporterMessage() {
+        if (supporterSnapshot == null) {
+            return getString(R.string.supporter_loading);
+        }
+        if (supporterSnapshot.isOwned()) {
+            return getString(R.string.supporter_badge_unlocked);
+        }
+        switch (supporterSnapshot.getState()) {
+            case AVAILABLE:
+                String price = supporterSnapshot.getFormattedPrice();
+                return price == null
+                        ? getString(R.string.supporter_loading)
+                        : getString(R.string.supporter_purchase_description, price);
+            case PENDING:
+                return getString(R.string.supporter_pending);
+            case CONNECTING:
+                return getString(R.string.supporter_loading);
+            case UNAVAILABLE:
+            case ERROR:
+            default:
+                return getString(R.string.supporter_unavailable);
+        }
     }
 
     @SuppressLint("MissingPermission")

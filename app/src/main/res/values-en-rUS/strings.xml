@@ -104,5 +104,15 @@
     <string name="no_connection">No connection</string>
     <string name="log_exported">Log exported to Downloads</string>
     <string name="export_failed">Export failed</string>
+    <string name="support_developer">Support the developer</string>
+    <string name="supporter_dialog_title">Support the developer</string>
+    <string name="supporter_purchase_description">Pay %1$s once to permanently unlock the supporter badge. This is not a subscription.</string>
+    <string name="supporter_loading">Connecting to Google Play…</string>
+    <string name="supporter_pending">Your payment is pending. The badge will unlock automatically after payment completes.</string>
+    <string name="supporter_badge_unlocked">Supporter badge permanently unlocked</string>
+    <string name="supporter_unavailable">Google Play or this product is temporarily unavailable. Please try again later.</string>
+    <string name="supporter_buy">Get supporter badge</string>
+    <string name="supporter_restore">Restore purchase</string>
+    <string name="close">Close</string>
 
 </resources>
