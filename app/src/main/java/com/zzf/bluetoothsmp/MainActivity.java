@@ -18,7 +18,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
-import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 
@@ -40,7 +39,10 @@ import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.ActivityCompat;
-import androidx.core.view.WindowCompat;
+import androidx.activity.EdgeToEdge;
+import androidx.activity.OnBackPressedCallback;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.navigation.NavController;
 import androidx.navigation.Navigation;
 import androidx.navigation.ui.AppBarConfiguration;
@@ -73,14 +75,20 @@ public class MainActivity extends BaseActivity {
     @SuppressLint("ResourceAsColor")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Force traditional status bar behavior on Android 15
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
+        EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
 
 
 
         binding = ActivityHomeBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+        ViewCompat.requestApplyInsets(binding.getRoot());
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                showExitDialog();
+            }
+        });
         new CheckUpdate().check(MainActivity.this);
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
@@ -281,8 +289,17 @@ public class MainActivity extends BaseActivity {
     }
 
     private void requestDiscoverableIfNeededThenContinueInit() {
-        if (mBluetooth != null
-                && mBluetooth.getScanMode() != BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE) {
+        if (mBluetooth == null) {
+            continueBluetoothInit();
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                && ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, mPermissionListnew, mOpenCode);
+            return;
+        }
+        if (mBluetooth.getScanMode() != BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                     && ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADVERTISE)
                     != PackageManager.PERMISSION_GRANTED) {
@@ -452,32 +469,19 @@ public class MainActivity extends BaseActivity {
         }
     };
 
-    @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        // 是否触发按键为back键
-        if (keyCode == KeyEvent.KEYCODE_BACK) {
-            AlertDialog.Builder dialog = new AlertDialog.Builder(MainActivity.this);
-            dialog.setTitle(getString(R.string.tips));
-            dialog.setMessage(getString(R.string.out));
-            dialog.setCancelable(false);
-            dialog.setPositiveButton(getString(R.string.confirm), new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-                    onBackPressed();
-                    finish();
-                }
-            });
-            dialog.setNegativeButton(getString(R.string.cancel), new DialogInterface.OnClickListener() {
-                @Override
-                public void onClick(DialogInterface dialog, int which) {
-
-                }
-            });
-            dialog.show();
-            return true;
-        } else {// 如果不是back键正常响应
-            return super.onKeyDown(keyCode, event);
-        }
+    private void showExitDialog() {
+        AlertDialog.Builder dialog = new AlertDialog.Builder(MainActivity.this);
+        dialog.setTitle(getString(R.string.tips));
+        dialog.setMessage(getString(R.string.out));
+        dialog.setCancelable(false);
+        dialog.setPositiveButton(getString(R.string.confirm), new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                finish();
+            }
+        });
+        dialog.setNegativeButton(getString(R.string.cancel), null);
+        dialog.show();
     }
 
     public void SystemExit(String message) {

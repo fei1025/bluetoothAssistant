@@ -11,7 +11,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
-import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -26,12 +25,13 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
+import androidx.activity.EdgeToEdge;
+import androidx.activity.OnBackPressedCallback;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.viewpager2.widget.ViewPager2;
 
@@ -73,11 +73,17 @@ public class Liantian_new extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
 
         binding = ActivityLiantianNewBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                handleBackPressed();
+            }
+        });
         applyEdgeToEdgeForChatPage();
         initData();
 
@@ -206,17 +212,11 @@ public class Liantian_new extends AppCompatActivity {
     }
 
 
-    @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        // 是否触发按键为back键
-        if (keyCode == KeyEvent.KEYCODE_BACK) {
-            if ("0".equals(infoType)) {exit();
-                return true;
-            }
+    private void handleBackPressed() {
+        if ("0".equals(infoType)) {
+            exit();
+        } else {
             dialog(getString(R.string.cutBluetooth));
-            return true;
-        } else {// 如果不是back键正常响应
-            return super.onKeyDown(keyCode, event);
         }
     }
     public void dialog(String s) {

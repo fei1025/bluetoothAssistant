@@ -105,7 +105,6 @@ public class DebugFragment extends BaseFragment {
             // 适配 Android 15 边缘到边模式
             setupEdgeToEdge(view);
         } else if (getActivity() != null) {
-            requireActivity().getWindow().setStatusBarColor(ContextCompat.getColor(requireContext(), R.color.purple_700));
             WindowInsetsControllerCompat controller = new WindowInsetsControllerCompat(
                     requireActivity().getWindow(), requireActivity().getWindow().getDecorView());
             controller.setAppearanceLightStatusBars(false);

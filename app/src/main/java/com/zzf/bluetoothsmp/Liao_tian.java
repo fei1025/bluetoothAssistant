@@ -8,7 +8,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.util.Log;
-import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -32,6 +31,7 @@ import java.util.Objects;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.widget.Toolbar;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -76,6 +76,12 @@ public class Liao_tian extends AppCompatActivity {
         msgList = new ArrayList<>();
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_liao_tian);
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                handleBackPressed();
+            }
+        });
         Toolbar toolbar = findViewById(R.id.lao_tian_toolbar);
         bluetoothName = getIntent().getStringExtra("bluetoothName");
         bluetoothAdd = getIntent().getStringExtra("bluetoothAdd");
@@ -165,18 +171,11 @@ public class Liao_tian extends AppCompatActivity {
         return true;
     }
 
-    @Override
-    public boolean onKeyDown(int keyCode, KeyEvent event) {
-        // 是否触发按键为back键
-        if (keyCode == KeyEvent.KEYCODE_BACK) {
-            if ("0".equals(infoType)) {
-                exit();
-                return true;
-            }
+    private void handleBackPressed() {
+        if ("0".equals(infoType)) {
+            exit();
+        } else {
             dialog(getString(R.string.cutBluetooth));
-            return true;
-        } else {// 如果不是back键正常响应
-            return super.onKeyDown(keyCode, event);
         }
     }
 
