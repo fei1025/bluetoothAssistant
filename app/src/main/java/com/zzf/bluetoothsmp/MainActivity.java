@@ -256,6 +256,7 @@ public class MainActivity extends BaseActivity {
             }
         }
         initBluetoothAdapter();
+        updateDiscoverableMenuItem();
         ensureBluetoothEnabledThenInit();
     }
 
@@ -288,14 +289,13 @@ public class MainActivity extends BaseActivity {
         requestDiscoverableIfNeededThenContinueInit();
     }
 
+    @SuppressLint("MissingPermission")
     private void requestDiscoverableIfNeededThenContinueInit() {
         if (mBluetooth == null) {
             continueBluetoothInit();
             return;
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                && ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
-                != PackageManager.PERMISSION_GRANTED) {
+        if (!hasBluetoothRuntimePermissions()) {
             ActivityCompat.requestPermissions(this, mPermissionListnew, mOpenCode);
             return;
         }
@@ -578,6 +578,10 @@ public class MainActivity extends BaseActivity {
             updateDiscoverableMenuItem();
             return;
         }
+        if (!hasBluetoothRuntimePermissions()) {
+            ActivityCompat.requestPermissions(this, mPermissionListnew, mOpenCode);
+            return;
+        }
         if (!mBluetooth.isEnabled()) {
             Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
             startActivityForResult(enableIntent, REQ_MENU_ENABLE_BT);
@@ -609,6 +613,13 @@ public class MainActivity extends BaseActivity {
             return;
         }
 
+        if (!hasBluetoothRuntimePermissions()) {
+            discoverableMenuItem.setEnabled(false);
+            discoverableMenuItem.setIcon(R.drawable.ic_visibility_off);
+            discoverableMenuItem.setTitle(R.string.discoverable_status_unavailable);
+            return;
+        }
+
         discoverableMenuItem.setEnabled(true);
         if (!adapter.isEnabled()) {
             discoverableMenuItem.setIcon(R.drawable.ic_visibility_off);
@@ -624,6 +635,16 @@ public class MainActivity extends BaseActivity {
         discoverableMenuItem.setTitle(discoverable
                 ? R.string.renew_discoverable
                 : R.string.open_discoverable);
+    }
+
+    private boolean hasBluetoothRuntimePermissions() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return true;
+        }
+        return ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN)
+                == PackageManager.PERMISSION_GRANTED
+                && ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
+                == PackageManager.PERMISSION_GRANTED;
     }
 
     public Handler mHandler = new Handler(Looper.getMainLooper()) {
