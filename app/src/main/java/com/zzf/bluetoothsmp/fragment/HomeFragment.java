@@ -2,6 +2,7 @@ package com.zzf.bluetoothsmp.fragment;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
@@ -11,6 +12,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Bundle;
+import android.content.pm.PackageManager;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -260,6 +262,17 @@ public class HomeFragment extends BaseFragment {
         }
         BluetoothAdapter adapter = resolveBluetoothAdapter();
         if (adapter == null) {
+            discoverableMenuItem.setEnabled(false);
+            discoverableMenuItem.setIcon(R.drawable.ic_visibility_off);
+            discoverableMenuItem.setTitle(R.string.discoverable_status_unavailable);
+            return;
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+                && (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.BLUETOOTH_SCAN)
+                        != PackageManager.PERMISSION_GRANTED
+                || ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.BLUETOOTH_CONNECT)
+                        != PackageManager.PERMISSION_GRANTED)) {
             discoverableMenuItem.setEnabled(false);
             discoverableMenuItem.setIcon(R.drawable.ic_visibility_off);
             discoverableMenuItem.setTitle(R.string.discoverable_status_unavailable);
