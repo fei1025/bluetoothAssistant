@@ -210,6 +210,16 @@ public class HomeFragment extends BaseFragment {
     }
 
     @Override
+    public void onResume() {
+        super.onResume();
+        // 权限弹窗或系统“允许被发现”页面返回后，刷新首页自己的 Toolbar 菜单。
+        View root = getView();
+        if (root != null) {
+            root.post(this::updateDiscoverableMenuItem);
+        }
+    }
+
+    @Override
     public void onStop() {
         if (scanModeReceiverRegistered) {
             requireContext().unregisterReceiver(scanModeReceiver);
