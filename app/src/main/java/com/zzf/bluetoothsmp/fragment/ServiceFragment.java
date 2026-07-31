@@ -1,5 +1,6 @@
 package com.zzf.bluetoothsmp.fragment;
 
+import android.Manifest;
 import androidx.appcompat.widget.Toolbar;
 
 import android.app.AlertDialog;
@@ -11,11 +12,14 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.app.Activity;
 import android.os.Bundle;
+import android.os.Build;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
+import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import android.content.pm.PackageManager;
 
 import android.os.Message;
 import android.text.Editable;
@@ -82,8 +86,19 @@ public class ServiceFragment extends BaseFragment {
 
         init(inflate);
         initClient(inflate);
+        initReconnect(inflate);
         initDiscoverable(inflate);
         return inflate;
+    }
+
+    private void initReconnect(View inflate) {
+        SwitchMaterial autoReconnectSwitch = inflate.findViewById(R.id.autoReconnectSwitch);
+        if (autoReconnectSwitch == null) {
+            return;
+        }
+        autoReconnectSwitch.setChecked(com.zzf.bluetoothsmp.StaticObject.reconnectManager.isGlobalEnabled());
+        autoReconnectSwitch.setOnCheckedChangeListener((buttonView, isChecked) ->
+                com.zzf.bluetoothsmp.StaticObject.reconnectManager.setGlobalEnabled(isChecked));
     }
 
     public void init(View inflate) {
@@ -102,14 +117,22 @@ public class ServiceFragment extends BaseFragment {
                 // 切换事件发生时执行的操作
                 if (isChecked) {
                     // SwitchMaterial被切换到选中状态
+                    if (mainActivity.bluetoothService == null) {
+                        enable_iconnect.setChecked(false);
+                        senHandlerMessage(0, getString(R.string.bluetooth_port_error));
+                        return;
+                    }
                     try {
                         mainActivity.bluetoothService.createService();
                     } catch (IOException e) {
-                        throw new RuntimeException(e);
+                        enable_iconnect.setChecked(false);
+                        senHandlerMessage(0, getString(R.string.bluetooth_port_error));
                     }
                 } else {
                     // SwitchMaterial被切换到非选中状态
-                    mainActivity.bluetoothService.stop();
+                    if (mainActivity.bluetoothService != null) {
+                        mainActivity.bluetoothService.stop();
+                    }
                 }
             }
         });
@@ -159,12 +182,11 @@ public class ServiceFragment extends BaseFragment {
                     first1.save();
                     viewById.setText(text.toString());
                     enable_iconnect.setChecked(false);
-                    try {
-                        Thread.sleep(1000L);
-                        enable_iconnect.setChecked(true);
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                        if (isAdded() && mainActivity != null && mainActivity.bluetoothService != null) {
+                            enable_iconnect.setChecked(true);
+                        }
+                    }, 1000L);
                     senHandlerMessage(0, mainActivity.getString(R.string.success));
 
 
@@ -238,6 +260,10 @@ public class ServiceFragment extends BaseFragment {
         discoverableStatus = inflate.findViewById(R.id.discoverableStatus);
         openDiscoverable = inflate.findViewById(R.id.openDiscoverable);
         openDiscoverable.setOnClickListener(v -> {
+            if (!hasBluetoothPermissions()) {
+                requestBluetoothPermissions();
+                return;
+            }
             Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
             discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, DISCOVERABLE_DURATION_SECONDS);
             startActivityForResult(discoverableIntent, REQUEST_DISCOVERABLE);
@@ -290,6 +316,13 @@ public class ServiceFragment extends BaseFragment {
             return;
         }
 
+        if (!hasBluetoothPermissions()) {
+            discoverableStatus.setText(R.string.discoverable_status_unavailable);
+            discoverableStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.red));
+            openDiscoverable.setEnabled(false);
+            return;
+        }
+
         openDiscoverable.setEnabled(true);
         boolean discoverable = adapter.getScanMode()
                 == BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE;
@@ -301,6 +334,25 @@ public class ServiceFragment extends BaseFragment {
             discoverableStatus.setText(R.string.discoverable_status_hidden);
             discoverableStatus.setTextColor(ContextCompat.getColor(requireContext(), R.color.red));
             openDiscoverable.setText(R.string.open_discoverable);
+        }
+    }
+
+    private boolean hasBluetoothPermissions() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            return true;
+        }
+        return ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.BLUETOOTH_CONNECT)
+                == PackageManager.PERMISSION_GRANTED
+                && ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.BLUETOOTH_ADVERTISE)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void requestBluetoothPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ActivityCompat.requestPermissions(requireActivity(), new String[]{
+                    Manifest.permission.BLUETOOTH_CONNECT,
+                    Manifest.permission.BLUETOOTH_ADVERTISE
+            }, 0x31);
         }
     }
 

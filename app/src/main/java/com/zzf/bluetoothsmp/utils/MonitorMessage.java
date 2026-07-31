@@ -17,6 +17,9 @@ public class MonitorMessage {
         //监听接受数据
         StaticObject.bluetoothEvent.addEventListener(BluetoothType.RECEIVE, l -> {
             Msg msg = (Msg) l.getEventData()[0];
+            if (!msg.isPersistHistory()) {
+                return;
+            }
             MessageMapper messageMapper= new MessageMapper();
             messageMapper.setSendName(msg.getBluetoothName());
             messageMapper.setSendAdd(msg.getBluetoothAdd());
@@ -31,6 +34,9 @@ public class MonitorMessage {
         //监听发送数据
         StaticObject.bluetoothEvent.addEventListener(BluetoothType.SEND, l -> {
             Msg msg = (Msg) l.getEventData()[0];
+            if (!msg.isPersistHistory()) {
+                return;
+            }
             MessageMapper messageMapper= new MessageMapper();
             messageMapper.setSendName(msg.getBluetoothName());
             messageMapper.setSendAdd(msg.getBluetoothAdd());
@@ -46,6 +52,9 @@ public class MonitorMessage {
         }, UUID);
         StaticObject.bluetoothEvent.addEventListener(BluetoothType.All_MSG,l->{
             Msg msg = (Msg) l.getEventData()[0];
+            if (!msg.isPersistHistory()) {
+                return;
+            }
             saveMsg(msg);
         },UUID);
         return UUID;

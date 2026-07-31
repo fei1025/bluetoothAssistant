@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="crc_algorithms">
+        <item>SUM8</item>
+        <item>XOR</item>
+        <item>CRC8</item>
+        <item>CRC16_MODBUS</item>
+        <item>CRC16_CCITT</item>
+    </string-array>
+    <string-array name="frame_modes">
+        <item>RAW</item>
+        <item>CRLF</item>
+        <item>LF</item>
+        <item>CR</item>
+        <item>FIXED_LENGTH</item>
+        <item>CUSTOM</item>
+        <item>TIMEOUT</item>
+    </string-array>
+    <string-array name="text_encodings">
+        <item>UTF_8</item>
+        <item>GBK</item>
+        <item>ASCII</item>
+        <item>HEX</item>
+    </string-array>
+</resources>

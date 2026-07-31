@@ -2,6 +2,7 @@ package com.zzf.bluetoothsmp.fragment;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.Manifest;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -12,24 +13,40 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.content.pm.PackageManager;
+import android.text.InputType;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.EditText;
+import android.widget.LinearLayout;
 
 import com.zzf.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.databinding.FragmentHomeBinding;
+import com.zzf.bluetoothsmp.BluetoothConnectionState;
 import com.zzf.bluetoothsmp.BluetoothObject;
+import com.zzf.bluetoothsmp.BluetoothPermissionUtils;
+import com.zzf.bluetoothsmp.BluetoothServiceConnect;
+import com.zzf.bluetoothsmp.BluetoothServiceConnect;
+import com.zzf.bluetoothsmp.BluetoothDeviceProfileStore;
 import com.zzf.bluetoothsmp.Fruit;
 import com.zzf.bluetoothsmp.MainActivity;
+import com.zzf.bluetoothsmp.StaticObject;
 import com.zzf.bluetoothsmp.customAdapter.FruitAdapter;
+import com.zzf.bluetoothsmp.entity.BluetoothDeviceProfileEntity;
+import com.zzf.bluetoothsmp.entity.BluetoothDrive;
+import com.zzf.bluetoothsmp.liaoTian.Liantian_new;
 import com.zzf.bluetoothsmp.myLayout.MySwipeRefreshLayout;
+import com.zzf.bluetoothsmp.utils.BluetoothAddressUtils;
 import com.zzf.bluetoothsmp.utils.LanguageUtils;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -38,6 +55,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
+import com.google.android.material.switchmaterial.SwitchMaterial;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
@@ -47,6 +65,8 @@ public class HomeFragment extends BaseFragment {
     private final String TAG = "HomeFragment";
     private static final int REQUEST_ENABLE_BLUETOOTH = 0x33;
     private static final int REQUEST_DISCOVERABLE = 0x32;
+    private static final int REQUEST_SCAN_PERMISSION = 0x35;
+    private static final int REQUEST_CONNECT_PERMISSION = 0x36;
     private static final int DISCOVERABLE_DURATION_SECONDS = 300;
 
     private FragmentHomeBinding binding;
@@ -56,9 +76,37 @@ public class HomeFragment extends BaseFragment {
     private final List<Fruit> fruitList = new ArrayList<>();
     private MainActivity mainActivity;
     private BluetoothObject bluetoothObject;
-    private Date uploadTime = new Date();
+    private Date uploadTime = new Date(0);
+    private final Handler scanHandler = new Handler(Looper.getMainLooper());
+    private boolean scanInProgress;
+    private final Runnable scanTimeout = () -> finishScan(true);
+    private final Runnable connectionStateRefresh = new Runnable() {
+        @Override
+        public void run() {
+            refreshConnectionStates();
+            if (isAdded()) {
+                scanHandler.postDelayed(this, 500L);
+            }
+        }
+    };
     private MenuItem discoverableMenuItem;
     private boolean scanModeReceiverRegistered;
+    private boolean discoveryStateReceiverRegistered;
+    private Fruit pendingConnectFruit;
+
+    private final BroadcastReceiver discoveryStateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            if (BluetoothAdapter.ACTION_DISCOVERY_STARTED.equals(action)) {
+                scanInProgress = true;
+                scanHandler.removeCallbacks(scanTimeout);
+                scanHandler.postDelayed(scanTimeout, 15_000L);
+            } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
+                finishScan(false);
+            }
+        }
+    };
 
     private final BroadcastReceiver scanModeReceiver = new BroadcastReceiver() {
         @Override
@@ -75,6 +123,9 @@ public class HomeFragment extends BaseFragment {
                              ViewGroup container, Bundle savedInstanceState) {
 
         mainActivity = (MainActivity) getActivity();
+        if (mainActivity != null) {
+            StaticObject.connectionAttemptRegistry.updateHandlers(mainActivity.mHandler);
+        }
         binding = FragmentHomeBinding.inflate(inflater, container, false);
         View root = binding.getRoot();
 
@@ -147,50 +198,93 @@ public class HomeFragment extends BaseFragment {
         swipeRefresh.setOnRefreshListener(new SwipeRefreshLayout.OnRefreshListener() {
             @Override
             public void onRefresh() {
+                if (scanInProgress) {
+                    return;
+                }
                 if (((new Date().getTime() - uploadTime.getTime()) / 1000) < 10) {
                     ToastUtil.toastWord(getString(R.string.update));
                     swipeRefresh.setRefreshing(false);
                     return;
                 }
                 fruitList.clear();
-                adapter = new FruitAdapter(fruitList);
-                mRecyclerView.setAdapter(adapter);
-                refreshFruits();
+                adapter.notifyDataSetChanged();
+                startScan();
                 uploadTime = new Date();
             }
         });
         adapter.setOnItemClickListener(new FruitAdapter.onItemDeleteListener() {
             @Override
-            public void OnItemClick(int i) {
+            public void OnItemClick(Fruit fruit) {
+                if (fruit == null || fruit.getBluetoothDevice() == null) {
+                    return;
+                }
+                String address = BluetoothAddressUtils.normalize(fruit.getAddress());
+                BluetoothConnectionState state = StaticObject.connectionRegistry.get(address);
+                if (state == BluetoothConnectionState.CONNECTING
+                        || state == BluetoothConnectionState.PAIRING
+                        || state == BluetoothConnectionState.RECONNECTING) {
+                    BluetoothObject connecting = StaticObject.connectionAttemptRegistry.get(address);
+                    if (connecting != null) {
+                        connecting.cancelConnect();
+                        refreshConnectionStates();
+                    }
+                    return;
+                }
+                if (state == BluetoothConnectionState.CONNECTED) {
+                    openConnectedSession(fruit);
+                    return;
+                }
                 bluetoothObject = new BluetoothObject();
-                Fruit fruit = fruitList.get(i);
                 BluetoothDevice bluetoothDevice = fruit.getBluetoothDevice();
+                if (!BluetoothPermissionUtils.hasConnectPermission(requireContext())) {
+                    pendingConnectFruit = fruit;
+                    requestPermissions(BluetoothPermissionUtils.connectPermissions(),
+                            REQUEST_CONNECT_PERMISSION);
+                    return;
+                }
                 bluetoothObject.setBluetoothDevice(bluetoothDevice);
                 try {
-                    bluetoothObject.connect(mainActivity, mainActivity.mHandler);
+                    bluetoothObject.connect(mainActivity.getApplicationContext(), mainActivity.mHandler);
                 } catch (Exception e) {
                     ToastUtil.toastWord(mainActivity, getString(R.string.connect_fails));
                     e.printStackTrace();
                 }
             }
         });
+        adapter.setOnFavoriteClickListener(fruit -> {
+            String address = BluetoothAddressUtils.normalize(fruit.getAddress());
+            boolean favorite = !fruit.isFavorite();
+            BluetoothDeviceProfileStore.setFavorite(address, favorite, System.currentTimeMillis());
+            fruit.setFavorite(favorite);
+            sortFruitList();
+            adapter.notifyDataSetChanged();
+        });
+        adapter.setOnLongClickListener(fruit -> {
+            showAliasDialog(fruit);
+            return true;
+        });
 
         mainActivity.setOnActivityDataChangedListener(new MainActivity.OnActivityDataChangedListener() {
             @SuppressLint("NotifyDataSetChanged")
             @Override
             public synchronized void addFruitData(Fruit f) {
-                if (!fruitList.contains(f)) {
+                if (f == null || adapter == null) {
+                    return;
+                }
+                String address = BluetoothAddressUtils.normalize(f.getAddress());
+                if (address == null) {
+                    return;
+                }
+                f.setAddress(address);
+                f.setConnectionState(StaticObject.connectionRegistry.get(address));
+                applyProfile(f);
+                int existingIndex = findFruitIndex(address);
+                if (existingIndex < 0) {
                     fruitList.add(f);
                 } else {
-                    for (int i = 0; i < fruitList.size(); i++) {
-                        Fruit fruit = fruitList.get(i);
-                        if (fruit.equals(f)) {
-                            fruitList.set(i, f);
-                            break;
-                        }
-                    }
-
+                    fruitList.set(existingIndex, f);
                 }
+                sortFruitList();
                 adapter.notifyDataSetChanged();
             }
         });
@@ -206,7 +300,21 @@ public class HomeFragment extends BaseFragment {
                     ContextCompat.RECEIVER_EXPORTED);
             scanModeReceiverRegistered = true;
         }
+        IntentFilter discoveryFilter = new IntentFilter();
+        discoveryFilter.addAction(BluetoothAdapter.ACTION_DISCOVERY_STARTED);
+        discoveryFilter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+        if (!discoveryStateReceiverRegistered) {
+            ContextCompat.registerReceiver(requireContext(), discoveryStateReceiver,
+                    discoveryFilter, ContextCompat.RECEIVER_EXPORTED);
+            discoveryStateReceiverRegistered = true;
+        }
+        scanHandler.removeCallbacks(connectionStateRefresh);
+        scanHandler.post(connectionStateRefresh);
         updateDiscoverableMenuItem();
+        loadSavedProfiles();
+        if (!scanInProgress) {
+            startScan();
+        }
     }
 
     @Override
@@ -217,10 +325,21 @@ public class HomeFragment extends BaseFragment {
         if (root != null) {
             root.post(this::updateDiscoverableMenuItem);
         }
+        if (!scanInProgress && mainActivity != null
+                && mainActivity.getmBluetooth() != null) {
+            startScan();
+        }
     }
 
     @Override
     public void onStop() {
+        scanHandler.removeCallbacks(scanTimeout);
+        scanHandler.removeCallbacks(connectionStateRefresh);
+        scanInProgress = false;
+        if (discoveryStateReceiverRegistered) {
+            requireContext().unregisterReceiver(discoveryStateReceiver);
+            discoveryStateReceiverRegistered = false;
+        }
         if (scanModeReceiverRegistered) {
             requireContext().unregisterReceiver(scanModeReceiver);
             scanModeReceiverRegistered = false;
@@ -232,6 +351,11 @@ public class HomeFragment extends BaseFragment {
         BluetoothAdapter adapter = resolveBluetoothAdapter();
         if (adapter == null) {
             ToastUtil.toastWord(requireContext(), getString(R.string.BluetoothNotFound));
+            updateDiscoverableMenuItem();
+            return;
+        }
+        if (!BluetoothPermissionUtils.hasServerPermissions(requireContext())) {
+            ToastUtil.toastWord(requireContext(), getString(R.string.NoBluetoothAccess));
             updateDiscoverableMenuItem();
             return;
         }
@@ -278,11 +402,7 @@ public class HomeFragment extends BaseFragment {
             return;
         }
 
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
-                && (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.BLUETOOTH_SCAN)
-                        != PackageManager.PERMISSION_GRANTED
-                || ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.BLUETOOTH_CONNECT)
-                        != PackageManager.PERMISSION_GRANTED)) {
+        if (!BluetoothPermissionUtils.hasServerPermissions(requireContext())) {
             discoverableMenuItem.setEnabled(false);
             discoverableMenuItem.setIcon(R.drawable.ic_visibility_off);
             discoverableMenuItem.setTitle(R.string.discoverable_status_unavailable);
@@ -324,34 +444,255 @@ public class HomeFragment extends BaseFragment {
     }
 
 
-    private void refreshFruits() {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-
-                try {
-                    Thread.sleep(2000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                mainActivity.runOnUiThread(new Runnable() {
-                    @SuppressLint({"NotifyDataSetChanged", "MissingPermission"})
-                    @Override
-                    public void run() {
-                        //fruitList.clear();
-                        mainActivity.initBluetooth();
-                        adapter = new FruitAdapter(fruitList);
-                        mRecyclerView.setAdapter(adapter);
-                        swipeRefresh.setRefreshing(false);
-                    }
-                });
+    @SuppressLint("MissingPermission")
+    private void startScan() {
+        BluetoothAdapter adapter = resolveBluetoothAdapter();
+        if (mainActivity == null || mainActivity.getmBluetooth() == null || adapter == null) {
+            finishScan(false);
+            if (isAdded()) {
+                ToastUtil.toastWord(requireContext(), getString(R.string.BluetoothNotFound));
             }
-        }).start();
+            return;
+        }
+        if (!adapter.isEnabled()) {
+            finishScan(false);
+            ToastUtil.toastWord(requireContext(), getString(R.string.initBluetooth));
+            return;
+        }
+        if (!BluetoothPermissionUtils.hasScanPermission(requireContext())) {
+            requestPermissions(BluetoothPermissionUtils.scanPermissions(),
+                    REQUEST_SCAN_PERMISSION);
+            return;
+        }
+        scanInProgress = true;
+        swipeRefresh.setRefreshing(true);
+        mainActivity.initBluetooth();
+        scanHandler.removeCallbacks(scanTimeout);
+        scanHandler.postDelayed(scanTimeout, 15_000L);
     }
 
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQUEST_SCAN_PERMISSION) {
+            boolean granted = grantResults.length > 0
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            com.zzf.bluetoothsmp.BluetoothTelemetry.logPermissionResult("scan", granted);
+            if (granted) {
+                startScan();
+            }
+        } else if (requestCode == REQUEST_CONNECT_PERMISSION) {
+            boolean granted = grantResults.length > 0
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            com.zzf.bluetoothsmp.BluetoothTelemetry.logPermissionResult("connect", granted);
+            Fruit fruit = pendingConnectFruit;
+            pendingConnectFruit = null;
+            if (granted && fruit != null && fruit.getBluetoothDevice() != null) {
+                bluetoothObject = new BluetoothObject();
+                bluetoothObject.setBluetoothDevice(fruit.getBluetoothDevice());
+                bluetoothObject.connect(mainActivity.getApplicationContext(), mainActivity.mHandler);
+            }
+        }
+    }
+
+    private void finishScan(boolean timedOut) {
+        scanHandler.removeCallbacks(scanTimeout);
+        boolean wasScanning = scanInProgress;
+        scanInProgress = false;
+        if (swipeRefresh != null) {
+            swipeRefresh.setRefreshing(false);
+        }
+        if (wasScanning && fruitList.isEmpty() && isAdded()) {
+            ToastUtil.toastWord(requireContext(), getString(
+                    timedOut ? R.string.scan_timeout : R.string.scan_no_results));
+        }
+    }
+
+    private int findFruitIndex(String address) {
+        for (int i = 0; i < fruitList.size(); i++) {
+            if (address.equals(BluetoothAddressUtils.normalize(fruitList.get(i).getAddress()))) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    @SuppressLint("MissingPermission")
+    private void loadSavedProfiles() {
+        if (mainActivity == null || mainActivity.getmBluetooth() == null) {
+            return;
+        }
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+                && ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.BLUETOOTH_CONNECT)
+                != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        for (BluetoothDeviceProfileEntity profile : BluetoothDeviceProfileStore.findAll()) {
+            try {
+                BluetoothDevice device = mainActivity.getmBluetooth()
+                        .getRemoteDevice(profile.getAddress());
+                Fruit fruit = new Fruit(requireContext());
+                fruit.setAddress(profile.getAddress());
+                fruit.setName(device.getName() == null ? profile.getDeviceName() : device.getName());
+                fruit.setState(device.getBondState());
+                fruit.setBluetoothType(device.getType());
+                fruit.setBluetoothDevice(device);
+                fruit.setAlias(profile.getAlias());
+                fruit.setFavorite(profile.isFavorite());
+                fruit.setLastConnectedAt(profile.getLastConnectedAt());
+                fruit.setConnectionState(StaticObject.connectionRegistry.get(profile.getAddress()));
+                int existing = findFruitIndex(profile.getAddress());
+                if (existing < 0) {
+                    fruitList.add(fruit);
+                } else {
+                    fruitList.set(existing, fruit);
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Keep stale profile data for a later discovery pass.
+            }
+        }
+        sortFruitList();
+        if (adapter != null) {
+            adapter.notifyDataSetChanged();
+        }
+    }
+
+    private void applyProfile(Fruit fruit) {
+        BluetoothDeviceProfileEntity profile = BluetoothDeviceProfileStore.find(fruit.getAddress());
+        if (profile == null) {
+            return;
+        }
+        fruit.setAlias(profile.getAlias());
+        fruit.setFavorite(profile.isFavorite());
+        fruit.setLastConnectedAt(profile.getLastConnectedAt());
+    }
+
+    private void showAliasDialog(Fruit fruit) {
+        if (!isAdded() || fruit == null) {
+            return;
+        }
+        EditText input = new EditText(requireContext());
+        input.setHint(R.string.device_alias);
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        input.setText(fruit.getAlias());
+        input.setSelection(input.length());
+        SwitchMaterial autoReconnect = new SwitchMaterial(requireContext());
+        autoReconnect.setText(R.string.device_auto_reconnect);
+        autoReconnect.setChecked(StaticObject.reconnectManager
+                .isDeviceReconnectEnabled(fruit.getAddress()));
+        LinearLayout content = new LinearLayout(requireContext());
+        content.setOrientation(LinearLayout.VERTICAL);
+        int padding = (int) (16 * getResources().getDisplayMetrics().density);
+        content.setPadding(padding, 0, padding, 0);
+        content.addView(input);
+        content.addView(autoReconnect);
+        new AlertDialog.Builder(requireContext())
+                .setTitle(R.string.device_alias)
+                .setView(content)
+                .setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.save, (dialog, which) -> {
+                    String alias = input.getText() == null ? "" : input.getText().toString();
+                    BluetoothDeviceProfileStore.updateAlias(
+                            fruit.getAddress(), alias, System.currentTimeMillis());
+                    StaticObject.reconnectManager.setDeviceReconnectEnabled(
+                            fruit.getAddress(), autoReconnect.isChecked());
+                    fruit.setAlias(alias);
+                    sortFruitList();
+                    if (adapter != null) {
+                        adapter.notifyDataSetChanged();
+                    }
+                })
+                .show();
+    }
+
+    private void openConnectedSession(Fruit fruit) {
+        BluetoothDrive drive = new BluetoothDrive();
+        drive.setDriveName(fruit.getDisplayName());
+        drive.setDriveAdd(fruit.getAddress());
+        BluetoothServiceConnect connection = StaticObject.bluetoothSocketMap.get(fruit.getAddress());
+        drive.setUuid(connection == null || connection.getSendUuid() == null
+                ? BluetoothObject.SPP_UUID : connection.getSendUuid());
+        Intent intent = new Intent(requireContext(), Liantian_new.class);
+        intent.putExtra("bluetoothName", fruit.getDisplayName());
+        intent.putExtra("bluetoothAdd", fruit.getAddress());
+        intent.putExtra("bluetoothUUid", drive.getUuid());
+        intent.putExtra("BluetoothDrive", drive);
+        startActivity(intent);
+    }
+
+    @SuppressLint("NotifyDataSetChanged")
+    private void refreshConnectionStates() {
+        if (adapter == null) {
+            return;
+        }
+        boolean changed = false;
+        for (Fruit fruit : fruitList) {
+            String address = BluetoothAddressUtils.normalize(fruit.getAddress());
+            BluetoothConnectionState state = StaticObject.connectionRegistry.get(address);
+            if (fruit.getConnectionState() != state) {
+                fruit.setConnectionState(state);
+                changed = true;
+            }
+        }
+        if (changed) {
+            adapter.notifyDataSetChanged();
+        }
+    }
+
+    private void sortFruitList() {
+        Collections.sort(fruitList, (left, right) -> {
+            if (left.isFavorite() != right.isFavorite()) {
+                return left.isFavorite() ? -1 : 1;
+            }
+
+            boolean leftPaired = left.getState() != null
+                    && left.getState() == BluetoothDevice.BOND_BONDED;
+            boolean rightPaired = right.getState() != null
+                    && right.getState() == BluetoothDevice.BOND_BONDED;
+            if (leftPaired != rightPaired) {
+                return leftPaired ? -1 : 1;
+            }
+
+            int recentCompare = Long.compare(right.getLastConnectedAt(), left.getLastConnectedAt());
+            if (recentCompare != 0) {
+                return recentCompare;
+            }
+
+            int rssiCompare = Integer.compare(parseRssi(right), parseRssi(left));
+            if (rssiCompare != 0) {
+                return rssiCompare;
+            }
+            String leftName = left.getName() == null ? "" : left.getName().trim();
+            String rightName = right.getName() == null ? "" : right.getName().trim();
+            int nameCompare = leftName.compareToIgnoreCase(rightName);
+            if (nameCompare != 0) {
+                return nameCompare;
+            }
+            String leftAddress = left.getAddress() == null ? "" : left.getAddress();
+            String rightAddress = right.getAddress() == null ? "" : right.getAddress();
+            return leftAddress.compareToIgnoreCase(rightAddress);
+        });
+    }
+
+    private int parseRssi(Fruit fruit) {
+        if (fruit.getRssi() == null) {
+            return Integer.MIN_VALUE;
+        }
+        try {
+            return Integer.parseInt(fruit.getRssi().trim());
+        } catch (NumberFormatException ignored) {
+            return Integer.MIN_VALUE;
+        }
+    }
 
     @Override
     public void onDestroyView() {
+        scanHandler.removeCallbacks(scanTimeout);
+        scanHandler.removeCallbacks(connectionStateRefresh);
+        if (mainActivity != null) {
+            mainActivity.setOnActivityDataChangedListener(null);
+        }
         super.onDestroyView();
         discoverableMenuItem = null;
         binding = null;

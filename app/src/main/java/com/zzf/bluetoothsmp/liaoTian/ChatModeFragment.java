@@ -88,6 +88,7 @@ public class ChatModeFragment extends Fragment {
         if (liantian_new != null && liantian_new.UUID != null) {
             StaticObject.bluetoothEvent.deleteAllEventByUuid(liantian_new.UUID);
         }
+        mHandler.removeCallbacksAndMessages(null);
         super.onDestroyView();
         binding = null;
     }
@@ -133,6 +134,9 @@ public class ChatModeFragment extends Fragment {
 
     public void initData(View root){
 
+        if (liantian_new == null || drive == null || drive.getDriveAdd() == null) {
+            return;
+        }
         String bluetoothAdd=drive.getDriveAdd();
         //监听接受数据
         StaticObject.bluetoothEvent.addEventListener(BluetoothType.RECEIVE, l -> {
@@ -170,16 +174,20 @@ public class ChatModeFragment extends Fragment {
                 }
                 String s = inputText.getText().toString();
                 if (!"".equals(s)) {
-                    Msg eventDatum = new Msg(s + "\r\n", Msg.TYPE_SENT, drive.getDriveAdd());
                     try {
+                        byte[] payload = bluetoothServiceConnect.encodeTextPayload(s);
+                        Msg eventDatum = new Msg(payload, Msg.TYPE_SENT, drive.getDriveAdd());
+                        eventDatum.setContent(s);
                         eventDatum.setBluetoothName(drive.getDriveName());
                         eventDatum.setBluetoothAdd(drive.getDriveAdd());
                         eventDatum.setSendUuid(drive.getUuid());
                         StaticObject.mTaskQueue.put(eventDatum);
+                        inputText.setText("");
+                    } catch (IllegalArgumentException error) {
+                        ToastUtil.toastWord(getContext(), error.getMessage());
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
-                    inputText.setText("");
                 }
             }
         });
@@ -210,12 +218,20 @@ public class ChatModeFragment extends Fragment {
     public Handler mHandler = new Handler(Looper.getMainLooper()) {
         @Override
         public void handleMessage(Message msg) {
+            if (!isAdded() || binding == null || liantian_new == null) {
+                return;
+            }
             switch (msg.what) {
                 case 0:
                     List<Msg> msgList = ChatModeFragment.msgList;
+                    if (msgList == null || msg.obj == null) {
+                        return;
+                    }
                     msgList.add((Msg) msg.obj);
-                    Objects.requireNonNull(msgRecyclerView.getAdapter()).notifyItemChanged(msgList.size() - 1);
-                    msgRecyclerView.scrollToPosition(msgList.size() - 1);
+                    if (msgRecyclerView != null && msgRecyclerView.getAdapter() != null) {
+                        msgRecyclerView.getAdapter().notifyItemInserted(msgList.size() - 1);
+                        msgRecyclerView.scrollToPosition(msgList.size() - 1);
+                    }
                     break;
                 case 1:
                     ToastUtil.toastWord(getContext(), getContext().getString(ConnectTheInterrupt));
@@ -228,6 +244,9 @@ public class ChatModeFragment extends Fragment {
         }
     };
     public void senHandlerMsg(int what, Object m) {
+        if (!isAdded() || binding == null) {
+            return;
+        }
         Message msg = new Message();
         msg.what = what;
         msg.obj = m;

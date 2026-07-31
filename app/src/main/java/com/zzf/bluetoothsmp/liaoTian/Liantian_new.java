@@ -186,13 +186,16 @@ public class Liantian_new extends AppCompatActivity {
             return;
         }
         if (!"".equals(s)) {
-            s=s+"\r\n";
-            Msg eventDatum = new Msg(s, Msg.TYPE_SENT, drive.getDriveAdd());
             try {
+                byte[] payload = bluetoothServiceConnect.encodeTextPayload(s);
+                Msg eventDatum = new Msg(payload, Msg.TYPE_SENT, drive.getDriveAdd());
+                eventDatum.setContent(s);
                 eventDatum.setBluetoothName(drive.getDriveName());
                 eventDatum.setBluetoothAdd(drive.getDriveAdd());
                 eventDatum.setSendUuid(drive.getUuid());
                 StaticObject.mTaskQueue.put(eventDatum);
+            } catch (IllegalArgumentException error) {
+                ToastUtil.toastWord(this, error.getMessage());
             } catch (Exception e) {
                 e.printStackTrace();
                 Log.e(TAG, "senMsg: 发送信息异常", e);
@@ -204,11 +207,20 @@ public class Liantian_new extends AppCompatActivity {
 
     public void exit() {
         StaticObject.bluetoothEvent.deleteAllEventByUuid(UUID);
-        BluetoothServiceConnect remove = StaticObject.bluetoothSocketMap.remove(drive.getDriveAdd());
-        if (remove != null) {
-            remove.close();
+        BluetoothServiceConnect connection = StaticObject.bluetoothSocketMap.get(drive.getDriveAdd());
+        if (connection != null) {
+            // Let the session remove itself so the connection registry also reaches
+            // DISCONNECTED; removing the map entry first would hide that transition.
+            connection.close();
         }
         finish();
+    }
+
+    @Override
+    protected void onDestroy() {
+        StaticObject.bluetoothEvent.deleteAllEventByUuid(UUID);
+        super.onDestroy();
+        binding = null;
     }
 
 

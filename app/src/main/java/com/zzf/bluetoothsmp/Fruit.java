@@ -40,6 +40,10 @@ public class Fruit {
     private String rssi;
     private Integer state;
     private String stateName;
+    private BluetoothConnectionState connectionState = BluetoothConnectionState.IDLE;
+    private String alias;
+    private boolean favorite;
+    private long lastConnectedAt;
     private BluetoothDevice bluetoothDevice;
     //是否可连接 默认为1 不可连接 0 可连接
     public  Integer isConnect =0;
@@ -129,6 +133,49 @@ public class Fruit {
 
     public void setStateName(String stateName) {
         this.stateName = stateName;
+    }
+
+    public BluetoothConnectionState getConnectionState() {
+        return connectionState;
+    }
+
+    public void setConnectionState(BluetoothConnectionState connectionState) {
+        this.connectionState = connectionState == null
+                ? BluetoothConnectionState.IDLE : connectionState;
+    }
+
+    public String getAlias() {
+        return alias;
+    }
+
+    public void setAlias(String alias) {
+        this.alias = alias;
+    }
+
+    public boolean isFavorite() {
+        return favorite;
+    }
+
+    public void setFavorite(boolean favorite) {
+        this.favorite = favorite;
+    }
+
+    public String getDisplayName() {
+        if (alias != null && !alias.trim().isEmpty()) {
+            return alias.trim();
+        }
+        if (name != null && !name.trim().isEmpty()) {
+            return name;
+        }
+        return address;
+    }
+
+    public long getLastConnectedAt() {
+        return lastConnectedAt;
+    }
+
+    public void setLastConnectedAt(long lastConnectedAt) {
+        this.lastConnectedAt = lastConnectedAt;
     }
 
     public Integer getIsConnect() {

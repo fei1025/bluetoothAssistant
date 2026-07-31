@@ -26,7 +26,6 @@ import org.litepal.LitePal;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
@@ -52,12 +51,20 @@ public class Liao_tian extends AppCompatActivity {
     public Handler mHandler = new Handler(Looper.getMainLooper()) {
         @Override
         public void handleMessage(Message msg) {
+            if (isFinishing() || isDestroyed()) {
+                return;
+            }
             switch (msg.what) {
                 case 0:
                     List<Msg> msgList = Liao_tian.msgList;
+                    if (msgList == null || msg.obj == null) {
+                        return;
+                    }
                     msgList.add((Msg) msg.obj);
-                    Objects.requireNonNull(msgRecyclerView.getAdapter()).notifyItemChanged(msgList.size() - 1);
-                    msgRecyclerView.scrollToPosition(msgList.size() - 1);
+                    if (msgRecyclerView != null && msgRecyclerView.getAdapter() != null) {
+                        msgRecyclerView.getAdapter().notifyItemInserted(msgList.size() - 1);
+                        msgRecyclerView.scrollToPosition(msgList.size() - 1);
+                    }
                     break;
                 case 1:
                     ToastUtil.toastWord(Liao_tian.this, Liao_tian.this.getString(ConnectTheInterrupt));
@@ -100,8 +107,9 @@ public class Liao_tian extends AppCompatActivity {
         initMsg();
         MsgAdapter adapter = new MsgAdapter(msgList);
         msgRecyclerView.setAdapter(adapter);
-        Objects.requireNonNull(msgRecyclerView.getAdapter()).notifyItemChanged(msgList.size() - 1);
-        msgRecyclerView.scrollToPosition(msgList.size() - 1);
+        if (!msgList.isEmpty()) {
+            msgRecyclerView.scrollToPosition(msgList.size() - 1);
+        }
         send.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -112,16 +120,20 @@ public class Liao_tian extends AppCompatActivity {
                 }
                 String s = inputText.getText().toString();
                 if (!"".equals(s)) {
-                    Msg eventDatum = new Msg(s, Msg.TYPE_SENT, bluetoothAdd);
                     try {
+                        byte[] payload = bluetoothServiceConnect.encodeTextPayload(s);
+                        Msg eventDatum = new Msg(payload, Msg.TYPE_SENT, bluetoothAdd);
+                        eventDatum.setContent(s);
                         eventDatum.setBluetoothName(bluetoothName);
                         eventDatum.setBluetoothAdd(bluetoothAdd);
                         eventDatum.setSendUuid(bluetoothUUid);
                         StaticObject.mTaskQueue.put(eventDatum);
+                        inputText.setText("");
+                    } catch (IllegalArgumentException error) {
+                        ToastUtil.toastWord(Liao_tian.this, error.getMessage());
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
-                    inputText.setText("");
                 }
             }
         });
@@ -180,7 +192,7 @@ public class Liao_tian extends AppCompatActivity {
     }
 
     public void initMsg() {
-        if (bluetoothAdd == null && bluetoothUUid == null) {
+        if (bluetoothAdd == null || bluetoothUUid == null) {
             return;
         }
         List<MessageMapper> messageList = LitePal.where(" sendAdd =? and sendUuid = ?", bluetoothAdd, bluetoothUUid).order("sendTime ").find(MessageMapper.class);
@@ -221,15 +233,27 @@ public class Liao_tian extends AppCompatActivity {
 
     public void exit() {
         StaticObject.bluetoothEvent.deleteAllEventByUuid(UUID);
-        BluetoothServiceConnect remove = StaticObject.bluetoothSocketMap.remove(bluetoothAdd);
-        if (remove != null) {
-            remove.close();
+        BluetoothServiceConnect connection = StaticObject.bluetoothSocketMap.get(bluetoothAdd);
+        if (connection != null) {
+            // Let the session remove itself so the connection registry also reaches
+            // DISCONNECTED; removing the map entry first would hide that transition.
+            connection.close();
         }
         finish();
     }
 
 
+    @Override
+    protected void onDestroy() {
+        StaticObject.bluetoothEvent.deleteAllEventByUuid(UUID);
+        mHandler.removeCallbacksAndMessages(null);
+        super.onDestroy();
+    }
+
     public void senHandlerMsg(int what, Object m) {
+        if (isFinishing() || isDestroyed()) {
+            return;
+        }
         Message msg = new Message();
         msg.what = what;
         msg.obj = m;

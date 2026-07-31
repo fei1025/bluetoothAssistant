@@ -45,4 +45,28 @@ public class CrlfFrameDecoderTest {
         assertEquals(1, frames.size());
         assertArrayEquals("a\rb".getBytes(StandardCharsets.UTF_8), frames.get(0));
     }
+
+    @Test
+    public void dropsOversizedFrameAndRecoversAtNextDelimiter() {
+        CrlfFrameDecoder decoder = new CrlfFrameDecoder(4);
+
+        byte[] input = "12345\r\nok\r\n".getBytes(StandardCharsets.UTF_8);
+        List<byte[]> frames = decoder.append(input, input.length);
+
+        assertEquals(1, frames.size());
+        assertArrayEquals("ok".getBytes(StandardCharsets.UTF_8), frames.get(0));
+        assertEquals(1, decoder.getDroppedFrameCount());
+    }
+
+    @Test
+    public void oversizedFrameCanRecoverWhenDelimiterIsSplitAcrossReads() {
+        CrlfFrameDecoder decoder = new CrlfFrameDecoder(4);
+        assertTrue(decoder.append("abcde\r".getBytes(StandardCharsets.UTF_8), 6).isEmpty());
+        assertTrue(decoder.append("\nnext\r".getBytes(StandardCharsets.UTF_8), 6).isEmpty());
+        List<byte[]> frames = decoder.append("\n".getBytes(StandardCharsets.UTF_8), 1);
+
+        assertEquals(1, frames.size());
+        assertArrayEquals("next".getBytes(StandardCharsets.UTF_8), frames.get(0));
+        assertEquals(1, decoder.getDroppedFrameCount());
+    }
 }

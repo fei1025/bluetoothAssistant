@@ -17,6 +17,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class MyApplication  extends Application {
@@ -24,6 +25,7 @@ public class MyApplication  extends Application {
     private static Context context;
     private static Application mApplication;
     private FirebaseAnalytics mFirebaseAnalytics;
+    private static final AtomicInteger startedActivities = new AtomicInteger();
 
     @Override
     public void onCreate() {
@@ -31,16 +33,12 @@ public class MyApplication  extends Application {
         context=getApplicationContext();
         LitePal.initialize(this);
         mApplication = this;
+        StaticObject.reconnectManager.initialize(this);
 
         registerActivityLifecycleCallbacks();
         mFirebaseAnalytics = FirebaseAnalytics.getInstance(this);
         mFirebaseAnalytics.setAnalyticsCollectionEnabled(true);
-        Bundle bundle = new Bundle();
-        bundle.putString("start", "yes");
-        mFirebaseAnalytics.logEvent("share", bundle);
-
-
-
+        BluetoothTelemetry.initialize(this);
     }
 
 
@@ -55,12 +53,19 @@ public class MyApplication  extends Application {
 
             @Override
             public void onActivityStarted(@NonNull Activity activity) {
-
+                startedActivities.incrementAndGet();
             }
 
             @Override
             public void onActivityResumed(@NonNull Activity activity) {
-
+                if (!BluetoothPermissionUtils.hasConnectPermission(activity)) {
+                    // Permission revocation can happen while a chat Activity or the
+                    // foreground service is alive. Close transport resources before
+                    // the next write/read reaches a platform SecurityException.
+                    StaticObject.closeAllConnections(true);
+                    StaticObject.stopBluetoothService();
+                    BluetoothConnectionForegroundService.stop(activity);
+                }
             }
 
             @Override
@@ -70,7 +75,10 @@ public class MyApplication  extends Application {
 
             @Override
             public void onActivityStopped(@NonNull Activity activity) {
-
+                int remaining = startedActivities.decrementAndGet();
+                if (remaining < 0) {
+                    startedActivities.set(0);
+                }
             }
 
             @Override
@@ -90,5 +98,9 @@ public class MyApplication  extends Application {
     }
     public static Context getContext(){
         return context;
+    }
+
+    public static boolean isAppInForeground() {
+        return startedActivities.get() > 0;
     }
 }

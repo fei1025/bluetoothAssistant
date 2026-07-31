@@ -9,6 +9,7 @@ import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.TextView;
 
+import com.zzf.bluetoothsmp.BluetoothConnectionState;
 import com.zzf.bluetoothsmp.Fruit;
 import com.zzf.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.utils.ImageUtils;
@@ -19,16 +20,17 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
 public class FruitAdapter extends RecyclerView.Adapter<FruitAdapter.ViewHolder> {
+    private static final int VIEW_TYPE_DEVICE = 0;
+    private static final int VIEW_TYPE_SECTION = 1;
     private List<Fruit> mFruitList;
-    private ViewGroup parent;
-    private int viewType;
 
     @NonNull
     @Override
     public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        //用来创建ViewHolder实例，再将加载好的布局传入构造函数，最后返回ViewHolder实例
-        View view = LayoutInflater.from(parent.getContext()).inflate(R.layout.fruit_item, null);
-        return new ViewHolder(view);
+        int layout = viewType == VIEW_TYPE_SECTION
+                ? R.layout.fruit_section_item : R.layout.fruit_item;
+        View view = LayoutInflater.from(parent.getContext()).inflate(layout, parent, false);
+        return new ViewHolder(view, viewType == VIEW_TYPE_SECTION);
     }
 
     public FruitAdapter(List<Fruit> fruitList) {
@@ -40,14 +42,26 @@ public class FruitAdapter extends RecyclerView.Adapter<FruitAdapter.ViewHolder> 
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, @SuppressLint("RecyclerView") int position) {
-        //用于对RecyclerView的子项进行赋值，会在每个子项滚动到屏幕内的时候执行
-        Fruit fruit = mFruitList.get(position);
-        holder.tv_name.setText(fruit.getName());
+        if (getItemViewType(position) == VIEW_TYPE_SECTION) {
+            holder.sectionTitle.setText(holder.sectionTitle.getContext().getString(
+                    sectionTitleFor(position)));
+            return;
+        }
+        Fruit fruit = getFruitAtAdapterPosition(position);
+        holder.tv_name.setText(fruit.getDisplayName());
         holder.tv_address.setText(fruit.getAddress());
-        holder.tv_rssi.setText(fruit.getRssi());
+        holder.tv_rssi.setText(fruit.getRssi() == null ? "" : fruit.getRssi());
         holder.tv_stateName.setText(fruit.getStateName());
         holder.tv_bluetoothTypeName.setText(fruit.getBluetoothTypeName());
-        String name =fruit.getName();
+        holder.favorite.setText(fruit.isFavorite() ? "★" : "☆");
+        holder.favorite.setOnClickListener(v -> {
+            if (mOnFavoriteClickListener != null) {
+                mOnFavoriteClickListener.OnFavoriteClick(fruit);
+            }
+        });
+        holder.itemView.setOnLongClickListener(v ->
+                mOnLongClickListener != null && mOnLongClickListener.OnLongClick(fruit));
+        String name = fruit.getDisplayName();
         if(name ==null || name.length()==0){
             name=fruit.getAddress();
         }
@@ -55,16 +69,32 @@ public class FruitAdapter extends RecyclerView.Adapter<FruitAdapter.ViewHolder> 
         if(bitmap!=null){
             holder.fruitImage.setImageBitmap(bitmap);
         }
-        if (1 == fruit.getIsConnect()) {
-            //隐藏按钮
-            //holder.button.setVisibility(View.INVISIBLE);.
-            holder.button.setEnabled(false);
-            holder.button.setText(R.string.do_not_connect);
+        holder.button.setOnClickListener(null);
+        BluetoothConnectionState connectionState = fruit.getConnectionState();
+        if (connectionState == BluetoothConnectionState.CONNECTED) {
+            holder.button.setEnabled(true);
+            holder.button.setText(R.string.open_session);
+            holder.button.setOnClickListener(v -> {
+                if (mOnItemDeleteListener != null) {
+                    mOnItemDeleteListener.OnItemClick(fruit);
+                }
+            });
+        } else if (connectionState == BluetoothConnectionState.CONNECTING
+                || connectionState == BluetoothConnectionState.PAIRING
+                || connectionState == BluetoothConnectionState.RECONNECTING) {
+            holder.button.setEnabled(true);
+            holder.button.setText(R.string.cancel_connection);
+            holder.button.setOnClickListener(v -> {
+                if (mOnItemDeleteListener != null) {
+                    mOnItemDeleteListener.OnItemClick(fruit);
+                }
+            });
         } else {
-            holder.button.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    mOnItemDeleteListener.OnItemClick(position);
+            holder.button.setEnabled(true);
+            holder.button.setText(R.string.connection);
+            holder.button.setOnClickListener(v -> {
+                if (mOnItemDeleteListener != null) {
+                    mOnItemDeleteListener.OnItemClick(fruit);
                 }
             });
         }
@@ -72,20 +102,90 @@ public class FruitAdapter extends RecyclerView.Adapter<FruitAdapter.ViewHolder> 
 
     @Override
     public int getItemCount() {
-        return mFruitList.size();
+        return mFruitList.size() + sectionCount();
+    }
+
+    @Override
+    public int getItemViewType(int position) {
+        return isSectionPosition(position) ? VIEW_TYPE_SECTION : VIEW_TYPE_DEVICE;
+    }
+
+    private int pairedCount() {
+        int count = 0;
+        for (Fruit fruit : mFruitList) {
+            if (isPaired(fruit)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private int sectionCount() {
+        int paired = pairedCount();
+        return (paired > 0 ? 1 : 0) + (mFruitList.size() - paired > 0 ? 1 : 0);
+    }
+
+    private boolean isSectionPosition(int position) {
+        int paired = pairedCount();
+        if (paired > 0 && position == 0) {
+            return true;
+        }
+        int unpairedHeaderPosition = (paired > 0 ? paired + 1 : 0);
+        return mFruitList.size() > paired && position == unpairedHeaderPosition;
+    }
+
+    private Fruit getFruitAtAdapterPosition(int position) {
+        int paired = pairedCount();
+        if (paired > 0) {
+            if (position <= paired) {
+                return mFruitList.get(position - 1);
+            }
+            return mFruitList.get(position - 2);
+        }
+        return mFruitList.get(position - 1);
+    }
+
+    private int sectionTitleFor(int position) {
+        return position == 0 && pairedCount() > 0
+                ? R.string.paired_devices : R.string.nearby_devices;
+    }
+
+    private boolean isPaired(Fruit fruit) {
+        return fruit.getState() != null
+                && fruit.getState() == android.bluetooth.BluetoothDevice.BOND_BONDED;
     }
 
     /**
      * 删除按钮的监听接口
      */
     public interface onItemDeleteListener {
-        void OnItemClick(int i);
+        void OnItemClick(Fruit fruit);
     }
 
     private onItemDeleteListener mOnItemDeleteListener;
 
     public void setOnItemClickListener(onItemDeleteListener mOnItemDeleteListener) {
         this.mOnItemDeleteListener = mOnItemDeleteListener;
+    }
+
+    public interface OnFavoriteClickListener {
+        void OnFavoriteClick(Fruit fruit);
+    }
+
+    private OnFavoriteClickListener mOnFavoriteClickListener;
+
+    public void setOnFavoriteClickListener(OnFavoriteClickListener listener) {
+        this.mOnFavoriteClickListener = listener;
+    }
+
+    public interface OnLongClickListener {
+        boolean OnLongClick(Fruit fruit);
+    }
+
+    private OnLongClickListener mOnLongClickListener;
+
+    public void setOnLongClickListener(OnLongClickListener listener) {
+        this.mOnLongClickListener = listener;
     }
 
     public static class ViewHolder extends RecyclerView.ViewHolder {
@@ -95,16 +195,23 @@ public class FruitAdapter extends RecyclerView.Adapter<FruitAdapter.ViewHolder> 
         TextView tv_stateName;
         TextView tv_bluetoothTypeName;
         TextView tv_rssi;
+        TextView favorite;
+        TextView sectionTitle;
         Button button;
 
-        public ViewHolder(@NonNull View itemView) {
+        public ViewHolder(@NonNull View itemView, boolean section) {
             super(itemView);
+            if (section) {
+                sectionTitle = itemView.findViewById(R.id.section_title);
+                return;
+            }
             fruitImage = itemView.findViewById(R.id.imageView);
             tv_name = itemView.findViewById(R.id.tv_name);
             tv_bluetoothTypeName = itemView.findViewById(R.id.tv_bluetoothTypeName);
             tv_stateName = itemView.findViewById(R.id.tv_stateName);
             tv_address = itemView.findViewById(R.id.tv_address);
             tv_rssi = itemView.findViewById(R.id.tv_rssi);
+            favorite = itemView.findViewById(R.id.button_favorite);
             button = itemView.findViewById(R.id.button_connect);
         }
     }

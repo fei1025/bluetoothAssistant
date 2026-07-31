@@ -2,12 +2,14 @@
 <litepal>
     <dbname value="message" ></dbname>
 
-    <version value="2" ></version>
+    <version value="4" ></version>
 
     <list>
         <mapping class="com.zzf.bluetoothsmp.entity.KeyboardEntity"/>
         <mapping class="com.zzf.bluetoothsmp.entity.MessageMapper"/>
         <mapping class="com.zzf.bluetoothsmp.entity.BluetoothDrive"/>
         <mapping class="com.zzf.bluetoothsmp.entity.SystemInfoMapper"/>
+        <mapping class="com.zzf.bluetoothsmp.entity.CommandMacroEntity"/>
+        <mapping class="com.zzf.bluetoothsmp.entity.BluetoothDeviceProfileEntity"/>
     </list>
 </litepal>

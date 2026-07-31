@@ -17,6 +17,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -28,12 +29,13 @@ import com.zzf.bluetoothsmp.billing.SupporterBillingManager;
 import com.zzf.bluetoothsmp.databinding.ActivityHomeBinding;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.zzf.bluetoothsmp.base.BaseActivity;
-import com.zzf.bluetoothsmp.entity.Msg;
+import com.zzf.bluetoothsmp.entity.BluetoothDrive;
+import com.zzf.bluetoothsmp.liaoTian.Liantian_new;
 import com.zzf.bluetoothsmp.utils.CheckUpdate;
 import com.zzf.bluetoothsmp.utils.LanguageUtils;
-import com.zzf.bluetoothsmp.utils.MonitorMessage;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
 
+import java.io.IOException;
 import java.util.Locale;
 import java.util.Set;
 
@@ -62,13 +64,14 @@ public class MainActivity extends BaseActivity {
     private static final int REQ_DISCOVERABLE_BT = 0x12;
     private static final int REQ_MENU_ENABLE_BT = 0x13;
     private static final int REQ_MENU_DISCOVERABLE_BT = 0x14;
+    private static final int REQ_POST_NOTIFICATIONS = 0x15;
     private static final int DISCOVERABLE_DURATION_SECONDS = 300;
     private final int mOpenCode = 0x01;
     public int scan = 1;
     private boolean isCreate = false;
     private boolean bluetoothInitCompleted = false;
+    private boolean initializationPromptInProgress = false;
     private boolean receiverRegistered = false;
-    private String monitorListenerUuid;
     private ActivityHomeBinding binding;
     private OnActivityDataChangedListener onActivityDataChangedListener;
     private MenuItem discoverableMenuItem;
@@ -116,12 +119,16 @@ public class MainActivity extends BaseActivity {
         });
         supporterBillingManager.start();
 
-        monitorListenerUuid = new MonitorMessage().MonitorAndSaveMse();
+        StaticObject.ensureMessageMonitor();
 
         cratePermission();
         isCreate = true;
-        //申请用户权限
-        ActivityCompat.requestPermissions(MainActivity.this, mPermissionListnew, mOpenCode);
+        initBluetoothAdapter();
+        if (hasBluetoothRuntimePermissions()) {
+            ensureBluetoothEnabledThenInit();
+        }
+        new Handler(Looper.getMainLooper()).post(() ->
+                handleIncomingConnectionIntent(getIntent()));
     }
 
     public static void actionActivity(Context context) {
@@ -203,7 +210,8 @@ public class MainActivity extends BaseActivity {
         // mRecyclerView.setAdapter(adapter);
         //注销蓝牙设备搜索的广播接收器
         //unregisterReceiver(discoveryReceiver);
-        if (mBluetooth != null && mBluetooth.isDiscovering()) {
+        if (mBluetooth != null && BluetoothPermissionUtils.hasScanPermission(this)
+                && mBluetooth.isDiscovering()) {
             //mBluetooth.startDiscovery();//开始扫描周围的蓝牙设备
             mBluetooth.cancelDiscovery();
         }
@@ -215,38 +223,69 @@ public class MainActivity extends BaseActivity {
         if (supporterBillingManager != null) {
             supporterBillingManager.syncPurchases();
         }
+        if (!hasBluetoothRuntimePermissions()) {
+            updateDiscoverableMenuItem();
+            return;
+        }
+        if (mBluetooth == null) {
+            initBluetoothAdapter();
+        }
+        if (mBluetooth != null && mBluetooth.isEnabled() && !bluetoothInitCompleted
+                && !initializationPromptInProgress) {
+            requestDiscoverableIfNeededThenContinueInit();
+        } else if (mBluetooth != null && mBluetooth.isEnabled()
+                && bluetoothInitCompleted
+                && (bluetoothService == null || !bluetoothService.isRunning())) {
+            restartBluetoothListenerIfNeeded();
+        }
     }
 
-
-    Thread sendEvent = new Thread(new Runnable() {
-        @Override
-        public void run() {
-            try {
-                while (true) {
-                    Msg take = StaticObject.mTaskQueue.take();
-                    if (take != null) {
-                        switch (take.getStateType()) {
-                            case 0:
-                                int type = take.getType();
-                                if (0 == type) {
-                                    StaticObject.bluetoothEvent.receiveMsg(take);
-                                } else {
-                                    StaticObject.bluetoothEvent.senMsg(take);
-                                }
-                                StaticObject.bluetoothEvent.AllMsg(take);
-                                break;
-                            case 1:
-                                StaticObject.bluetoothEvent.notConnect(take);
-                                break;
-                            default:
-                        }
-                    }
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+    @SuppressLint("MissingPermission")
+    private void restartBluetoothListenerIfNeeded() {
+        try {
+            bluetoothService = StaticObject.ensureBluetoothService(this, mBluetooth);
+            StaticObject.ensureMessageDispatcher();
+            StaticObject.ensureMessageMonitor();
+            requestNotificationPermissionIfNeeded();
+            BluetoothConnectionForegroundService.start(this);
+            StaticObject.reconnectManager.restorePendingConnections();
+            Log.i(TAG, "Restarted stopped Bluetooth SPP listener after returning to foreground");
+        } catch (IOException | RuntimeException error) {
+            Log.e(TAG, "Unable to restart Bluetooth SPP listener", error);
         }
-    });
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIncomingConnectionIntent(intent);
+    }
+
+    private void handleIncomingConnectionIntent(Intent intent) {
+        if (intent == null
+                || !"com.zzf.bluetoothsmp.action.OPEN_INCOMING_CONNECTION".equals(intent.getAction())) {
+            return;
+        }
+        String address = intent.getStringExtra("incomingBluetoothAdd");
+        if (address == null || StaticObject.bluetoothSocketMap.get(address) == null) {
+            return;
+        }
+        BluetoothServiceConnect connection = StaticObject.bluetoothSocketMap.get(address);
+        String name = intent.getStringExtra("incomingBluetoothName");
+        BluetoothDrive drive = new BluetoothDrive();
+        drive.setDriveName(name == null ? address : name);
+        drive.setDriveAdd(address);
+        drive.setUuid(connection.getSendUuid() == null
+                ? intent.getStringExtra("incomingBluetoothUuid") : connection.getSendUuid());
+        Intent chatIntent = new Intent(this, Liantian_new.class);
+        chatIntent.putExtra("BluetoothDrive", drive);
+        chatIntent.putExtra("bluetoothName", drive.getDriveName());
+        chatIntent.putExtra("bluetoothAdd", address);
+        chatIntent.putExtra("bluetoothUUid", drive.getUuid());
+        startActivity(chatIntent);
+    }
+
 
     public interface OnActivityDataChangedListener {
         void addFruitData(Fruit string);
@@ -266,15 +305,44 @@ public class MainActivity extends BaseActivity {
         if (requestCode != mOpenCode) {
             return;
         }
-        for (Integer permission : grantResults) {
-            if (permission != 0) {
-                SystemExit(getString(R.string.run));
-                return;
-            }
+        BluetoothTelemetry.logPermissionResult("server", hasBluetoothRuntimePermissions());
+        if (!hasBluetoothRuntimePermissions()) {
+            showBluetoothPermissionRequiredDialog();
+            updateDiscoverableMenuItem();
+            return;
         }
         initBluetoothAdapter();
         updateDiscoverableMenuItem();
         ensureBluetoothEnabledThenInit();
+    }
+
+    private void requestBluetoothPermissions() {
+        String[] permissions = BluetoothPermissionUtils.serverPermissions();
+        if (permissions.length == 0) {
+            initBluetoothAdapter();
+            ensureBluetoothEnabledThenInit();
+            return;
+        }
+        ActivityCompat.requestPermissions(this, permissions, mOpenCode);
+    }
+
+    private void showBluetoothPermissionRequiredDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.bluetooth_permission_required_title)
+                .setMessage(R.string.bluetooth_permission_required_message)
+                .setCancelable(true)
+                .setPositiveButton(R.string.permission_retry,
+                        (dialog, which) -> requestBluetoothPermissions())
+                .setNeutralButton(R.string.permission_settings,
+                        (dialog, which) -> openApplicationSettings())
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    private void openApplicationSettings() {
+        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:" + getPackageName()));
+        startActivity(intent);
     }
 
     @SuppressLint("MissingPermission")
@@ -300,6 +368,7 @@ public class MainActivity extends BaseActivity {
         }
         if (!mBluetooth.isEnabled()) {
             Intent enableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE);
+            initializationPromptInProgress = true;
             startActivityForResult(enableIntent, REQ_ENABLE_BT);
             return;
         }
@@ -313,18 +382,19 @@ public class MainActivity extends BaseActivity {
             return;
         }
         if (!hasBluetoothRuntimePermissions()) {
-            ActivityCompat.requestPermissions(this, mPermissionListnew, mOpenCode);
+            requestBluetoothPermissions();
             return;
         }
         if (mBluetooth.getScanMode() != BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
                     && ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADVERTISE)
                     != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, mPermissionListnew, mOpenCode);
+                requestBluetoothPermissions();
                 return;
             }
             Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
             discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, DISCOVERABLE_DURATION_SECONDS);
+            initializationPromptInProgress = true;
             startActivityForResult(discoverableIntent, REQ_DISCOVERABLE_BT);
             return;
         }
@@ -338,38 +408,60 @@ public class MainActivity extends BaseActivity {
         //初始化蓝牙
         initBluetooth();
         try {
-            bluetoothService = new BluetoothService();
-            //创建监听服务
-            bluetoothService.createService(this, mBluetooth);
-            if (!sendEvent.isAlive()) {
-                sendEvent.start();
-            }
+            // 创建或复用进程级监听服务；前台服务在进程重启后可能先于 Activity 恢复它。
+            bluetoothService = StaticObject.ensureBluetoothService(this, mBluetooth);
+            requestNotificationPermissionIfNeeded();
+            BluetoothConnectionForegroundService.start(this);
+            StaticObject.ensureMessageDispatcher();
             bluetoothInitCompleted = true;
+            StaticObject.reconnectManager.restorePendingConnections();
         } catch (Exception e) {
-            e.printStackTrace();
+            bluetoothInitCompleted = false;
+            Log.e(TAG, "Unable to initialize Bluetooth SPP runtime", e);
+            ToastUtil.toastWord(this, getString(R.string.bluetooth_port_error));
         }
     }
 
 
     @SuppressLint("MissingPermission")
-    private void beginDiscovery() {
-        if (mBluetooth != null && !mBluetooth.isDiscovering()) {
+    public void startBluetoothDiscovery() {
+        if (mBluetooth != null && BluetoothPermissionUtils.hasScanPermission(this)
+                && !mBluetooth.isDiscovering()) {
             mBluetooth.startDiscovery();//开始扫描周围的蓝牙设备
         }
     }
 
+    private void requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_POST_NOTIFICATIONS);
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private void beginDiscovery() {
+        startBluetoothDiscovery();
+    }
+
     @SuppressLint({"MissingPermission", "HardwareIds"})
     public void initBluetooth() {
-
-        if (mBluetooth.getName() != null && mBluetooth.getName().length() > 0) {
-            StaticObject.myBluetoothName = mBluetooth.getName();
-        } else {
-            StaticObject.myBluetoothName = mBluetooth.getAddress();
+        if (BluetoothPermissionUtils.hasConnectPermission(this)) {
+            if (mBluetooth.getName() != null && mBluetooth.getName().length() > 0) {
+                StaticObject.myBluetoothName = mBluetooth.getName();
+            } else {
+                StaticObject.myBluetoothName = mBluetooth.getAddress();
+            }
+            StaticObject.myBluetoothAdd = mBluetooth.getAddress();
         }
-        StaticObject.myBluetoothAdd = mBluetooth.getAddress();
 
         //开始扫描
         beginDiscovery();
+        if (!BluetoothPermissionUtils.hasConnectPermission(this)) {
+            registerDiscoveryReceiver();
+            return;
+        }
         Set<BluetoothDevice> bondedDevices = mBluetooth.getBondedDevices();
 
         if (bondedDevices != null && bondedDevices.size() != 0) {
@@ -380,7 +472,9 @@ public class MainActivity extends BaseActivity {
                 fruit.setState(device.getBondState());
                 fruit.setBluetoothType(device.getType());
                 fruit.setBluetoothDevice(device);
-                onActivityDataChangedListener.addFruitData(fruit);
+                if (onActivityDataChangedListener != null) {
+                    onActivityDataChangedListener.addFruitData(fruit);
+                }
             }
         }
         //需要过滤多个动作，则调用IntentFilter对象的addAction添加新动作
@@ -395,9 +489,29 @@ public class MainActivity extends BaseActivity {
         discoveryFilter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
         //蓝牙即将断开
         discoveryFilter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED);
+        discoveryFilter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
+        discoveryFilter.addAction(BluetoothAdapter.ACTION_DISCOVERY_STARTED);
+        discoveryFilter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
         //注册蓝牙设备搜索的广播接收器
+        registerDiscoveryReceiver(discoveryFilter);
+    }
+
+    private void registerDiscoveryReceiver() {
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(BluetoothDevice.ACTION_FOUND);
+        filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
+        filter.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
+        filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+        filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECT_REQUESTED);
+        filter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
+        filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_STARTED);
+        filter.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+        registerDiscoveryReceiver(filter);
+    }
+
+    private void registerDiscoveryReceiver(IntentFilter filter) {
         if (!receiverRegistered) {
-            registerReceiver(discoveryReceiver, discoveryFilter);
+            registerReceiver(discoveryReceiver, filter);
             receiverRegistered = true;
         }
     }
@@ -408,11 +522,16 @@ public class MainActivity extends BaseActivity {
             unregisterReceiver(discoveryReceiver);
             receiverRegistered = false;
         }
-        if (monitorListenerUuid != null) {
-            StaticObject.bluetoothEvent.deleteAllEventByUuid(monitorListenerUuid);
-        }
-        if (bluetoothService != null) {
-            bluetoothService.stop();
+        if (!isChangingConfigurations()) {
+            // The foreground service may have restored the process-level listener
+            // while this Activity field was still null. Always stop through the
+            // shared owner instead of relying on the Activity-local reference.
+            StaticObject.stopBluetoothService();
+            bluetoothService = null;
+            BluetoothConnectionForegroundService.stop(this);
+            StaticObject.closeAllConnections();
+            StaticObject.stopMessageMonitor();
+            StaticObject.stopMessageDispatcher();
         }
         if (supporterDialog != null) {
             supporterDialog.dismiss();
@@ -421,8 +540,6 @@ public class MainActivity extends BaseActivity {
         if (supporterBillingManager != null) {
             supporterBillingManager.close();
         }
-        StaticObject.closeAllConnections();
-        sendEvent.interrupt();
         super.onDestroy();
     }
 
@@ -434,29 +551,66 @@ public class MainActivity extends BaseActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-            BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
-            if (action == null || device == null) {
-                Log.w(TAG, "Ignoring Bluetooth broadcast without action or device");
+            if (action == null) {
+                Log.w(TAG, "Ignoring Bluetooth broadcast without action");
                 return;
             }
-            int bondState = device.getBondState();
+            if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(action)) {
+                handleBluetoothStateChanged(intent.getIntExtra(
+                        BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR));
+                return;
+            }
+            if (BluetoothAdapter.ACTION_DISCOVERY_STARTED.equals(action)
+                    || BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
+                return;
+            }
+            BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+            if (device == null) {
+                Log.w(TAG, "Ignoring Bluetooth broadcast without device: " + action);
+                return;
+            }
+            int bondState = BluetoothDevice.BOND_NONE;
+            try {
+                bondState = device.getBondState();
+            } catch (SecurityException ignored) {
+                // A scan result can be displayed before connect permission is granted.
+            }
             Fruit fruit = new Fruit(MainActivity.this);
-            fruit.setAddress(device.getAddress());
+            String address;
+            try {
+                address = device.getAddress();
+            } catch (SecurityException error) {
+                Log.w(TAG, "Unable to read scanned Bluetooth address", error);
+                return;
+            }
+            fruit.setAddress(address);
 
             //发现新的蓝牙设备
-            fruit.setName(device.getName());
+            String deviceName = null;
+            try {
+                deviceName = device.getName();
+            } catch (SecurityException ignored) {
+                // Name is optional until the user grants connect permission.
+            }
+            fruit.setName(deviceName);
             if (fruit.getName() == null || fruit.getName().length() == 0) {
                 fruit.setName("N/A");
             }
             fruit.setState(bondState);
-            fruit.setBluetoothType(device.getType());
+            try {
+                fruit.setBluetoothType(device.getType());
+            } catch (SecurityException ignored) {
+                fruit.setBluetoothType(BluetoothDevice.DEVICE_TYPE_UNKNOWN);
+            }
             if (BluetoothDevice.ACTION_FOUND.equals(action)
                     && intent.hasExtra(BluetoothDevice.EXTRA_RSSI)) {
                 short rssi = intent.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE);
                 fruit.setRssi(String.valueOf(rssi));
             }
             fruit.setBluetoothDevice(device);
-            onActivityDataChangedListener.addFruitData(fruit);
+            if (onActivityDataChangedListener != null) {
+                onActivityDataChangedListener.addFruitData(fruit);
+            }
 
             switch (action) {
                 case BluetoothDevice.ACTION_FOUND:
@@ -468,17 +622,10 @@ public class MainActivity extends BaseActivity {
                     BluetoothServiceConnect remove = StaticObject.bluetoothSocketMap.remove(device.getAddress());
                     if (remove != null) {
                         ToastUtil.toastWord(MainActivity.this, MainActivity.this.getString(ConnectTheInterrupt));
-                        remove.close();
-                        Msg m = new Msg(device.getAddress());
-                        m.setStateType(1);
-                        try {
-                            StaticObject.mTaskQueue.put(m);
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
+                        remove.closeAfterUnexpectedDisconnect();
                     }
-                    StaticObject.connectionRegistry.set(
-                            device.getAddress(), BluetoothConnectionState.DISCONNECTED);
+                    StaticObject.connectionRegistry.markDisconnectedUnlessReconnecting(
+                            device.getAddress());
                     break;
                     //蓝牙状态修改
                 case BluetoothDevice.ACTION_ACL_CONNECTED:
@@ -492,6 +639,29 @@ public class MainActivity extends BaseActivity {
             }
         }
     };
+
+    @SuppressLint("MissingPermission")
+    private void handleBluetoothStateChanged(int state) {
+        if (state == BluetoothAdapter.STATE_OFF
+                || state == BluetoothAdapter.STATE_TURNING_OFF) {
+            if (mBluetooth != null && BluetoothPermissionUtils.hasScanPermission(this)
+                    && mBluetooth.isDiscovering()) {
+                mBluetooth.cancelDiscovery();
+            }
+            // Do not depend on the Activity-local field: the foreground service
+            // can own the restored listener after a process/activity recreation.
+            StaticObject.stopBluetoothService();
+            bluetoothService = null;
+            BluetoothConnectionForegroundService.stop(this);
+            StaticObject.closeAllConnections(true);
+            bluetoothInitCompleted = false;
+            return;
+        }
+        if (state == BluetoothAdapter.STATE_ON && !bluetoothInitCompleted
+                && hasBluetoothRuntimePermissions()) {
+            continueBluetoothInit();
+        }
+    }
 
     private void showExitDialog() {
         AlertDialog.Builder dialog = new AlertDialog.Builder(MainActivity.this);
@@ -516,7 +686,7 @@ public class MainActivity extends BaseActivity {
         dialog.setPositiveButton("确定", new DialogInterface.OnClickListener() {
             @Override
             public void onClick(DialogInterface dialog, int which) {
-                System.exit(0);
+                finishAffinity();
             }
         });
         dialog.create().show();
@@ -541,6 +711,7 @@ public class MainActivity extends BaseActivity {
             return;
         }
         if (requestCode == REQ_ENABLE_BT) {
+            initializationPromptInProgress = false;
             if (resultCode == RESULT_OK) {
                 requestDiscoverableIfNeededThenContinueInit();
             } else {
@@ -549,6 +720,7 @@ public class MainActivity extends BaseActivity {
             return;
         }
         if (requestCode == REQ_DISCOVERABLE_BT) {
+            initializationPromptInProgress = false;
             continueBluetoothInit();
         }
     }
@@ -683,7 +855,7 @@ public class MainActivity extends BaseActivity {
             return;
         }
         if (!hasBluetoothRuntimePermissions()) {
-            ActivityCompat.requestPermissions(this, mPermissionListnew, mOpenCode);
+            requestBluetoothPermissions();
             return;
         }
         if (!mBluetooth.isEnabled()) {
@@ -742,13 +914,7 @@ public class MainActivity extends BaseActivity {
     }
 
     private boolean hasBluetoothRuntimePermissions() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            return true;
-        }
-        return ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN)
-                == PackageManager.PERMISSION_GRANTED
-                && ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT)
-                == PackageManager.PERMISSION_GRANTED;
+        return BluetoothPermissionUtils.hasServerPermissions(this);
     }
 
     public Handler mHandler = new Handler(Looper.getMainLooper()) {

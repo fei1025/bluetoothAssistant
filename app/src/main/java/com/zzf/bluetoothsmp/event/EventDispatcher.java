@@ -1,5 +1,7 @@
 package com.zzf.bluetoothsmp.event;
 
+import android.util.Log;
+
 import java.util.*;
 
 public class EventDispatcher {
@@ -50,7 +52,7 @@ public class EventDispatcher {
             try {
                 eventListener.onEvent(buildEvent(eventType, eventData));
             } catch (RuntimeException exception) {
-                exception.printStackTrace();
+                Log.e("BluetoothEvent", "Event listener failed for " + eventType, exception);
             }
         }
     }

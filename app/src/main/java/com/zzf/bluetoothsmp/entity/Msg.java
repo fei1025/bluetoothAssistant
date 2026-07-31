@@ -14,6 +14,9 @@ public class Msg {
     private String content;
     private byte[] payload;
     private int type;
+    private int segmentSize;
+    private long segmentIntervalMillis;
+    private boolean persistHistory = true;
     //发送方的uuid
     public String sendUuid;
 
@@ -86,6 +89,30 @@ public class Msg {
 
     public void setType(int type) {
         this.type = type;
+    }
+
+    public int getSegmentSize() {
+        return segmentSize;
+    }
+
+    public void setSegmentSize(int segmentSize) {
+        this.segmentSize = segmentSize;
+    }
+
+    public long getSegmentIntervalMillis() {
+        return segmentIntervalMillis;
+    }
+
+    public void setSegmentIntervalMillis(long segmentIntervalMillis) {
+        this.segmentIntervalMillis = segmentIntervalMillis;
+    }
+
+    public boolean isPersistHistory() {
+        return persistHistory;
+    }
+
+    public void setPersistHistory(boolean persistHistory) {
+        this.persistHistory = persistHistory;
     }
 
     public String getBluetoothAdd() {
