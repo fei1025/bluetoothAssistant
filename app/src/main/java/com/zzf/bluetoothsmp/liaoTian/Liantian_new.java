@@ -113,24 +113,34 @@ public class Liantian_new extends AppCompatActivity {
             return;
         }
         final int appBarPaddingStart = appBar.getPaddingStart();
+        final int appBarPaddingTop = appBar.getPaddingTop();
         final int appBarPaddingEnd = appBar.getPaddingEnd();
         final int appBarPaddingBottom = appBar.getPaddingBottom();
+        final int pagerPaddingStart = pager.getPaddingStart();
+        final int pagerPaddingTop = pager.getPaddingTop();
+        final int pagerPaddingEnd = pager.getPaddingEnd();
+        final int pagerPaddingBottom = pager.getPaddingBottom();
 
         ViewCompat.setOnApplyWindowInsetsListener(binding.getRoot(), (v, insets) -> {
-            Insets statusInsets = insets.getInsets(WindowInsetsCompat.Type.statusBars());
-            Insets navInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
+            Insets safeInsets = insets.getInsets(
+                    WindowInsetsCompat.Type.systemBars()
+                            | WindowInsetsCompat.Type.displayCutout());
 
             appBar.setPaddingRelative(
                     appBarPaddingStart,
-                    statusInsets.top,
+                    appBarPaddingTop + safeInsets.top,
                     appBarPaddingEnd,
                     appBarPaddingBottom
             );
 
-            int bottomInset = navInsets.bottom;
-            pager.setPadding(navInsets.left, 0, navInsets.right, bottomInset);
+            pager.setPaddingRelative(
+                    pagerPaddingStart + safeInsets.left,
+                    pagerPaddingTop,
+                    pagerPaddingEnd + safeInsets.right,
+                    pagerPaddingBottom + safeInsets.bottom);
             return insets;
         });
+        ViewCompat.requestApplyInsets(binding.getRoot());
     }
 
     private void initData(){

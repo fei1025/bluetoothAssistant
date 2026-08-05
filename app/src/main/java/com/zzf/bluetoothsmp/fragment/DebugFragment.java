@@ -20,6 +20,7 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -439,6 +440,15 @@ public class DebugFragment extends BaseFragment {
         binding.btnDeleteMacro.setOnClickListener(v -> deleteMacro());
         binding.btnExportMacros.setOnClickListener(v -> exportMacros());
         binding.btnImportMacros.setOnClickListener(v -> importMacros());
+        binding.btnMacroHelp.setOnClickListener(v -> showMacroHelp());
+    }
+
+    private void showMacroHelp() {
+        new AlertDialog.Builder(requireContext())
+                .setTitle(R.string.macro_help_title)
+                .setMessage(R.string.macro_help_message)
+                .setPositiveButton(R.string.confirm, null)
+                .show();
     }
 
     private void loadMacros() {
@@ -490,26 +500,47 @@ public class DebugFragment extends BaseFragment {
                 : binding.macroNameInput.getText().toString().trim();
         String script = binding.macroScriptInput.getText() == null ? ""
                 : binding.macroScriptInput.getText().toString();
+        if (name.isEmpty()) {
+            Toast.makeText(getContext(), R.string.macro_name_required,
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (script.trim().isEmpty()) {
+            Toast.makeText(getContext(), R.string.macro_script_required,
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final int repeat;
+        try {
+            repeat = parsePositive(binding.macroRepeatInput.getText());
+        } catch (IllegalArgumentException error) {
+            Toast.makeText(getContext(), R.string.macro_repeat_invalid,
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (repeat > 100) {
+            Toast.makeText(getContext(), R.string.macro_repeat_invalid,
+                    Toast.LENGTH_SHORT).show();
+            return;
+        }
         try {
             MacroParser.parse(script);
-            int repeat = parsePositive(binding.macroRepeatInput.getText());
-            if (repeat > 100 || name.isEmpty()) {
-                throw new IllegalArgumentException("invalid macro metadata");
-            }
-            CommandMacroEntity macro = CommandMacroStore.findByName(address, name);
-            if (macro == null) {
-                macro = new CommandMacroEntity();
-                macro.setBluetoothAddress(address);
-            }
-            macro.setName(name);
-            macro.setScript(script);
-            macro.setRepeatCount(repeat);
-            CommandMacroStore.save(macro);
-            loadMacros();
-            Toast.makeText(getContext(), R.string.macro_saved, Toast.LENGTH_SHORT).show();
         } catch (IllegalArgumentException error) {
-            Toast.makeText(getContext(), R.string.macro_invalid, Toast.LENGTH_SHORT).show();
+            Toast.makeText(getContext(), R.string.macro_script_invalid,
+                    Toast.LENGTH_LONG).show();
+            return;
         }
+        CommandMacroEntity macro = CommandMacroStore.findByName(address, name);
+        if (macro == null) {
+            macro = new CommandMacroEntity();
+            macro.setBluetoothAddress(address);
+        }
+        macro.setName(name);
+        macro.setScript(script);
+        macro.setRepeatCount(repeat);
+        CommandMacroStore.save(macro);
+        loadMacros();
+        Toast.makeText(getContext(), R.string.macro_saved, Toast.LENGTH_SHORT).show();
     }
 
     private void deleteMacro() {
@@ -638,9 +669,14 @@ public class DebugFragment extends BaseFragment {
 
     private void runMacro() {
         String address = normalizedDiagnosticAddress();
-        CommandMacroEntity macro = selectedMacro();
-        if (address == null || macro == null) {
+        if (address == null) {
             Toast.makeText(getContext(), R.string.macro_no_device, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        CommandMacroEntity macro = selectedMacro();
+        if (macro == null) {
+            Toast.makeText(getContext(), R.string.macro_no_selection,
+                    Toast.LENGTH_SHORT).show();
             return;
         }
         try {

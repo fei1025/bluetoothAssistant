@@ -32,6 +32,9 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.widget.Toolbar;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -83,6 +86,7 @@ public class Liao_tian extends AppCompatActivity {
         msgList = new ArrayList<>();
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_liao_tian);
+        applySystemBarInsets();
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
@@ -159,6 +163,42 @@ public class Liao_tian extends AppCompatActivity {
                 senHandlerMsg(1, msg);
             }
         }, UUID);
+    }
+
+    private void applySystemBarInsets() {
+        View root = findViewById(R.id.legacy_chat_root);
+        View appBar = findViewById(R.id.legacy_chat_appbar);
+        View content = findViewById(R.id.legacy_chat_content);
+        if (root == null || appBar == null || content == null) {
+            return;
+        }
+
+        final int appBarStart = appBar.getPaddingStart();
+        final int appBarTop = appBar.getPaddingTop();
+        final int appBarEnd = appBar.getPaddingEnd();
+        final int appBarBottom = appBar.getPaddingBottom();
+        final int contentStart = content.getPaddingStart();
+        final int contentTop = content.getPaddingTop();
+        final int contentEnd = content.getPaddingEnd();
+        final int contentBottom = content.getPaddingBottom();
+
+        ViewCompat.setOnApplyWindowInsetsListener(root, (view, insets) -> {
+            Insets safeInsets = insets.getInsets(
+                    WindowInsetsCompat.Type.systemBars()
+                            | WindowInsetsCompat.Type.displayCutout());
+            appBar.setPaddingRelative(
+                    appBarStart,
+                    appBarTop + safeInsets.top,
+                    appBarEnd,
+                    appBarBottom);
+            content.setPaddingRelative(
+                    contentStart + safeInsets.left,
+                    contentTop,
+                    contentEnd + safeInsets.right,
+                    contentBottom + safeInsets.bottom);
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(root);
     }
 
 

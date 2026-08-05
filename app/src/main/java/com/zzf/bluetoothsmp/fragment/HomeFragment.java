@@ -150,6 +150,8 @@ public class HomeFragment extends BaseFragment {
                 if (itemId == R.id.home_discoverable) {
                     requestDiscoverable();
                     return true;
+                } else if (itemId == R.id.support_developer) {
+                    return mainActivity != null && mainActivity.onOptionsItemSelected(item);
                 } else if (itemId == R.id.ys) {
                     url = "https://fei1025.github.io/privacy-policie/bluetto/";
                 } else if (itemId == R.id.me) {
@@ -168,6 +170,9 @@ public class HomeFragment extends BaseFragment {
 
                     }
                     return true;
+                }
+                if (url.isEmpty()) {
+                    return false;
                 }
                 Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
                 startActivity(intent);
