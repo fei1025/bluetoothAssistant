@@ -3,6 +3,7 @@ package com.zzf.bluetoothsmp.billing;
 import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -18,6 +19,7 @@ import com.android.billingclient.api.Purchase;
 import com.android.billingclient.api.PurchasesUpdatedListener;
 import com.android.billingclient.api.QueryProductDetailsParams;
 import com.android.billingclient.api.QueryPurchasesParams;
+import com.android.billingclient.api.UnfetchedProduct;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -28,6 +30,7 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
 
     public static final String SUPPORTER_BADGE_PRODUCT_ID = "supporter_badge";
 
+    private static final String TAG = "SupporterBilling";
     private static final String PREFS_NAME = "supporter_billing";
     private static final String KEY_LAST_CONFIRMED_OWNED = "last_confirmed_owned";
 
@@ -40,16 +43,30 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
         ERROR
     }
 
+    public enum FailureReason {
+        NONE,
+        PLAY_BILLING_UNAVAILABLE,
+        NETWORK,
+        PRODUCT_NOT_FOUND,
+        NO_ELIGIBLE_OFFER,
+        CONFIGURATION,
+        UNKNOWN
+    }
+
     public static final class Snapshot {
         private final State state;
         private final boolean owned;
         @Nullable
         private final String formattedPrice;
+        @NonNull
+        private final FailureReason failureReason;
 
-        Snapshot(State state, boolean owned, @Nullable String formattedPrice) {
+        Snapshot(State state, boolean owned, @Nullable String formattedPrice,
+                 @NonNull FailureReason failureReason) {
             this.state = state;
             this.owned = owned;
             this.formattedPrice = formattedPrice;
+            this.failureReason = failureReason;
         }
 
         public State getState() {
@@ -63,6 +80,11 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
         @Nullable
         public String getFormattedPrice() {
             return formattedPrice;
+        }
+
+        @NonNull
+        public FailureReason getFailureReason() {
+            return failureReason;
         }
     }
 
@@ -84,6 +106,7 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
     private boolean closed;
     private boolean owned;
     private State state;
+    private FailureReason failureReason = FailureReason.NONE;
 
     public SupporterBillingManager(@NonNull Context context) {
         Context applicationContext = context.getApplicationContext();
@@ -126,15 +149,16 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
                 if (billingResult.getResponseCode() == BillingClient.BillingResponseCode.OK) {
                     refreshFromPlay();
                 } else {
-                    state = State.UNAVAILABLE;
-                    publish();
+                    handleBillingFailure("setup", billingResult);
                 }
             }
 
             @Override
             public void onBillingServiceDisconnected() {
                 connecting = false;
+                failureReason = FailureReason.PLAY_BILLING_UNAVAILABLE;
                 state = owned ? State.OWNED : State.ERROR;
+                Log.w(TAG, "Google Play Billing service disconnected");
                 publish();
             }
         });
@@ -155,6 +179,13 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
             return;
         }
         if (!billingClient.isReady() || productDetails == null || selectedOffer == null) {
+            if (!billingClient.isReady()) {
+                failureReason = FailureReason.PLAY_BILLING_UNAVAILABLE;
+            } else if (failureReason == FailureReason.NONE) {
+                failureReason = productDetails == null
+                        ? FailureReason.PRODUCT_NOT_FOUND
+                        : FailureReason.NO_ELIGIBLE_OFFER;
+            }
             state = State.UNAVAILABLE;
             publish();
             start();
@@ -171,8 +202,7 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
                 .build();
         BillingResult result = billingClient.launchBillingFlow(activity, flowParams);
         if (result.getResponseCode() != BillingClient.BillingResponseCode.OK) {
-            state = State.ERROR;
-            publish();
+            handleBillingFailure("launch", result);
         }
     }
 
@@ -191,12 +221,16 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
         } else if (responseCode == BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED) {
             queryPurchases();
         } else if (responseCode != BillingClient.BillingResponseCode.USER_CANCELED) {
-            state = owned ? State.OWNED : State.ERROR;
-            publish();
+            handleBillingFailure("purchase update", billingResult);
         }
     }
 
     private void refreshFromPlay() {
+        if (!owned) {
+            failureReason = FailureReason.NONE;
+            state = State.CONNECTING;
+            publish();
+        }
         queryProductDetails();
         queryPurchases();
     }
@@ -215,17 +249,20 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
                 productDetails = null;
                 selectedOffer = null;
                 formattedPrice = null;
-                if (!owned) {
-                    state = State.UNAVAILABLE;
-                }
-                publish();
+                handleProductLookupFailure(billingResult, result.getUnfetchedProductList());
                 return;
             }
             productDetails = result.getProductDetailsList().get(0);
             selectedOffer = selectBuyOffer(productDetails);
             formattedPrice = selectedOffer == null ? null : selectedOffer.getFormattedPrice();
             if (!owned && state != State.PENDING) {
-                state = selectedOffer == null ? State.UNAVAILABLE : State.AVAILABLE;
+                if (selectedOffer == null) {
+                    failureReason = FailureReason.NO_ELIGIBLE_OFFER;
+                    state = State.UNAVAILABLE;
+                } else {
+                    failureReason = FailureReason.NONE;
+                    state = State.AVAILABLE;
+                }
             }
             publish();
         });
@@ -253,8 +290,7 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
             if (billingResult.getResponseCode() == BillingClient.BillingResponseCode.OK) {
                 processPurchases(purchases, true);
             } else {
-                state = owned ? State.OWNED : State.ERROR;
-                publish();
+                handleBillingFailure("purchase query", billingResult);
             }
         });
     }
@@ -281,6 +317,7 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
                 SupporterEntitlementResolver.resolve(entries, SUPPORTER_BADGE_PRODUCT_ID);
         if (result == SupporterEntitlementResolver.Result.OWNED) {
             setOwned(true);
+            failureReason = FailureReason.NONE;
             state = State.OWNED;
             publish();
             acknowledgeIfNeeded(supporterPurchase);
@@ -288,13 +325,88 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
             if (authoritativeQuery) {
                 setOwned(false);
             }
+            failureReason = FailureReason.NONE;
             state = State.PENDING;
             publish();
         } else if (authoritativeQuery) {
             setOwned(false);
-            state = selectedOffer == null ? State.CONNECTING : State.AVAILABLE;
+            if (selectedOffer != null) {
+                failureReason = FailureReason.NONE;
+                state = State.AVAILABLE;
+            } else {
+                // Product lookup runs in parallel with the purchase query. Do not
+                // overwrite a completed product failure with CONNECTING forever.
+                state = failureReason == FailureReason.NONE
+                        ? State.CONNECTING
+                        : State.UNAVAILABLE;
+            }
             publish();
         }
+    }
+
+    private void handleProductLookupFailure(@NonNull BillingResult billingResult,
+                                            @NonNull List<UnfetchedProduct> unfetchedProducts) {
+        if (billingResult.getResponseCode() != BillingClient.BillingResponseCode.OK) {
+            handleBillingFailure("product query", billingResult);
+            return;
+        }
+
+        failureReason = FailureReason.PRODUCT_NOT_FOUND;
+        for (UnfetchedProduct unfetchedProduct : unfetchedProducts) {
+            if (!SUPPORTER_BADGE_PRODUCT_ID.equals(unfetchedProduct.getProductId())) {
+                continue;
+            }
+            switch (unfetchedProduct.getStatusCode()) {
+                case UnfetchedProduct.StatusCode.INVALID_PRODUCT_ID_FORMAT:
+                    failureReason = FailureReason.CONFIGURATION;
+                    break;
+                case UnfetchedProduct.StatusCode.NO_ELIGIBLE_OFFER:
+                    failureReason = FailureReason.NO_ELIGIBLE_OFFER;
+                    break;
+                case UnfetchedProduct.StatusCode.PRODUCT_NOT_FOUND:
+                    failureReason = FailureReason.PRODUCT_NOT_FOUND;
+                    break;
+                case UnfetchedProduct.StatusCode.UNKNOWN:
+                default:
+                    failureReason = FailureReason.UNKNOWN;
+                    break;
+            }
+            Log.w(TAG, "Product unavailable: id=" + unfetchedProduct.getProductId()
+                    + ", status=" + unfetchedProduct.getStatusCode());
+            break;
+        }
+        state = owned ? State.OWNED : State.UNAVAILABLE;
+        publish();
+    }
+
+    private void handleBillingFailure(@NonNull String operation,
+                                      @NonNull BillingResult billingResult) {
+        switch (billingResult.getResponseCode()) {
+            case BillingClient.BillingResponseCode.NETWORK_ERROR:
+            case BillingClient.BillingResponseCode.SERVICE_TIMEOUT:
+                failureReason = FailureReason.NETWORK;
+                break;
+            case BillingClient.BillingResponseCode.BILLING_UNAVAILABLE:
+            case BillingClient.BillingResponseCode.FEATURE_NOT_SUPPORTED:
+            case BillingClient.BillingResponseCode.SERVICE_DISCONNECTED:
+            case BillingClient.BillingResponseCode.SERVICE_UNAVAILABLE:
+                failureReason = FailureReason.PLAY_BILLING_UNAVAILABLE;
+                break;
+            case BillingClient.BillingResponseCode.ITEM_UNAVAILABLE:
+                failureReason = FailureReason.PRODUCT_NOT_FOUND;
+                break;
+            case BillingClient.BillingResponseCode.DEVELOPER_ERROR:
+                failureReason = FailureReason.CONFIGURATION;
+                break;
+            default:
+                failureReason = FailureReason.UNKNOWN;
+                break;
+        }
+        state = owned ? State.OWNED : State.ERROR;
+        Log.w(TAG, "Billing " + operation + " failed: code="
+                + billingResult.getResponseCode() + ", message="
+                + billingResult.getDebugMessage());
+        publish();
     }
 
     private void acknowledgeIfNeeded(@Nullable Purchase purchase) {
@@ -308,6 +420,9 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
             // An unacknowledged purchase remains queryable, so a later foreground sync retries.
             if (billingResult.getResponseCode() != BillingClient.BillingResponseCode.OK) {
                 state = State.OWNED;
+                Log.w(TAG, "Purchase acknowledgement failed: code="
+                        + billingResult.getResponseCode() + ", message="
+                        + billingResult.getDebugMessage());
                 publish();
             }
         });
@@ -320,7 +435,8 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
 
     private void publish() {
         if (listener != null) {
-            listener.onBillingStateChanged(new Snapshot(state, owned, formattedPrice));
+            listener.onBillingStateChanged(
+                    new Snapshot(state, owned, formattedPrice, failureReason));
         }
     }
 }

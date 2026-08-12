@@ -23,15 +23,14 @@ import com.google.android.material.tabs.TabLayout;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
-import androidx.activity.EdgeToEdge;
 import androidx.activity.OnBackPressedCallback;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.viewpager2.widget.ViewPager2;
 
@@ -39,6 +38,7 @@ import com.google.android.material.tabs.TabLayoutMediator;
 import com.zzf.bluetoothsmp.BluetoothServiceConnect;
 import com.zzf.bluetoothsmp.MyApplication;
 import com.zzf.bluetoothsmp.StaticObject;
+import com.zzf.bluetoothsmp.base.BaseActivity;
 import com.zzf.bluetoothsmp.customAdapter.MsgAdapter;
 import com.zzf.bluetoothsmp.entity.BluetoothDrive;
 import com.zzf.bluetoothsmp.entity.MessageMapper;
@@ -53,7 +53,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-public class Liantian_new extends AppCompatActivity {
+public class Liantian_new extends BaseActivity {
 
     private ActivityLiantianNewBinding binding;
 
@@ -73,11 +73,12 @@ public class Liantian_new extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
 
         binding = ActivityLiantianNewBinding.inflate(getLayoutInflater());
         setContentView(binding.getRoot());
+        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
+                .setAppearanceLightStatusBars(false);
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {

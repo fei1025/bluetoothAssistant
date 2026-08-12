@@ -19,3 +19,9 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# LitePal loads model classes from assets/litepal.xml and reflects on their
+# field names. Keep both the ORM implementation and all persisted model names
+# so an optimized release remains compatible with the existing database.
+-keep class org.litepal.** { *; }
+-keep class * extends org.litepal.crud.LitePalSupport { *; }

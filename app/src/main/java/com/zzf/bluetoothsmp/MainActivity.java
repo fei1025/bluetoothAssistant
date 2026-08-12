@@ -30,6 +30,7 @@ import com.zzf.bluetoothsmp.databinding.ActivityHomeBinding;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.zzf.bluetoothsmp.base.BaseActivity;
 import com.zzf.bluetoothsmp.entity.BluetoothDrive;
+import com.zzf.bluetoothsmp.entity.BluetoothDeviceProfileEntity;
 import com.zzf.bluetoothsmp.liaoTian.Liantian_new;
 import com.zzf.bluetoothsmp.utils.CheckUpdate;
 import com.zzf.bluetoothsmp.utils.LanguageUtils;
@@ -40,11 +41,11 @@ import java.util.Locale;
 import java.util.Set;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.ActivityCompat;
-import androidx.activity.EdgeToEdge;
 import androidx.activity.OnBackPressedCallback;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -71,6 +72,7 @@ public class MainActivity extends BaseActivity {
     private boolean isCreate = false;
     private boolean bluetoothInitCompleted = false;
     private boolean initializationPromptInProgress = false;
+    private boolean bluetoothPermissionRequestInProgress = false;
     private boolean receiverRegistered = false;
     private ActivityHomeBinding binding;
     private OnActivityDataChangedListener onActivityDataChangedListener;
@@ -85,7 +87,6 @@ public class MainActivity extends BaseActivity {
     @SuppressLint("ResourceAsColor")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
 
 
@@ -126,6 +127,8 @@ public class MainActivity extends BaseActivity {
         initBluetoothAdapter();
         if (hasBluetoothRuntimePermissions()) {
             ensureBluetoothEnabledThenInit();
+        } else {
+            requestBluetoothPermissions();
         }
         new Handler(Looper.getMainLooper()).post(() ->
                 handleIncomingConnectionIntent(getIntent()));
@@ -305,6 +308,7 @@ public class MainActivity extends BaseActivity {
         if (requestCode != mOpenCode) {
             return;
         }
+        bluetoothPermissionRequestInProgress = false;
         BluetoothTelemetry.logPermissionResult("server", hasBluetoothRuntimePermissions());
         if (!hasBluetoothRuntimePermissions()) {
             showBluetoothPermissionRequiredDialog();
@@ -316,13 +320,17 @@ public class MainActivity extends BaseActivity {
         ensureBluetoothEnabledThenInit();
     }
 
-    private void requestBluetoothPermissions() {
-        String[] permissions = BluetoothPermissionUtils.serverPermissions();
-        if (permissions.length == 0) {
+    public void requestBluetoothPermissions() {
+        if (bluetoothPermissionRequestInProgress) {
+            return;
+        }
+        String[] permissions = BluetoothPermissionUtils.requiredPermissions();
+        if (permissions.length == 0 || BluetoothPermissionUtils.hasRequiredPermissions(this)) {
             initBluetoothAdapter();
             ensureBluetoothEnabledThenInit();
             return;
         }
+        bluetoothPermissionRequestInProgress = true;
         ActivityCompat.requestPermissions(this, permissions, mOpenCode);
     }
 
@@ -352,7 +360,7 @@ public class MainActivity extends BaseActivity {
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             BluetoothManager bm = getSystemService(BluetoothManager.class);
-            mBluetooth = bm.getAdapter();
+            mBluetooth = bm == null ? null : bm.getAdapter();
         } else {
             mBluetooth = BluetoothAdapter.getDefaultAdapter();
         }
@@ -385,13 +393,13 @@ public class MainActivity extends BaseActivity {
             requestBluetoothPermissions();
             return;
         }
+        if (!BluetoothPermissionUtils.hasAdvertisePermission(this)) {
+            // Advertising controls discoverability, but it must not block scanning,
+            // device names, outgoing connections, or the local RFCOMM listener.
+            continueBluetoothInit();
+            return;
+        }
         if (mBluetooth.getScanMode() != BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                    && ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_ADVERTISE)
-                    != PackageManager.PERMISSION_GRANTED) {
-                requestBluetoothPermissions();
-                return;
-            }
             Intent discoverableIntent = new Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE);
             discoverableIntent.putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, DISCOVERABLE_DURATION_SECONDS);
             initializationPromptInProgress = true;
@@ -468,7 +476,7 @@ public class MainActivity extends BaseActivity {
             for (BluetoothDevice device : bondedDevices) {
                 Fruit fruit = new Fruit(this);
                 fruit.setAddress(device.getAddress());
-                fruit.setName(device.getName());
+                fruit.setName(resolveDeviceName(device, null, fruit.getAddress()));
                 fruit.setState(device.getBondState());
                 fruit.setBluetoothType(device.getType());
                 fruit.setBluetoothDevice(device);
@@ -481,6 +489,7 @@ public class MainActivity extends BaseActivity {
         IntentFilter discoveryFilter = new IntentFilter();
         //获取新的数据
         discoveryFilter.addAction(BluetoothDevice.ACTION_FOUND);
+        discoveryFilter.addAction(BluetoothDevice.ACTION_NAME_CHANGED);
         //连接上了
         discoveryFilter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
         //状态改变
@@ -499,6 +508,7 @@ public class MainActivity extends BaseActivity {
     private void registerDiscoveryReceiver() {
         IntentFilter filter = new IntentFilter();
         filter.addAction(BluetoothDevice.ACTION_FOUND);
+        filter.addAction(BluetoothDevice.ACTION_NAME_CHANGED);
         filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
         filter.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
         filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
@@ -585,17 +595,9 @@ public class MainActivity extends BaseActivity {
             }
             fruit.setAddress(address);
 
-            //发现新的蓝牙设备
-            String deviceName = null;
-            try {
-                deviceName = device.getName();
-            } catch (SecurityException ignored) {
-                // Name is optional until the user grants connect permission.
-            }
-            fruit.setName(deviceName);
-            if (fruit.getName() == null || fruit.getName().length() == 0) {
-                fruit.setName("N/A");
-            }
+            // Prefer the name carried by the discovery broadcast. Some devices do not
+            // populate BluetoothDevice#getName() until after ACTION_FOUND is delivered.
+            fruit.setName(resolveDeviceName(device, intent, address));
             fruit.setState(bondState);
             try {
                 fruit.setBluetoothType(device.getType());
@@ -639,6 +641,30 @@ public class MainActivity extends BaseActivity {
             }
         }
     };
+
+    @SuppressLint("MissingPermission")
+    private String resolveDeviceName(@NonNull BluetoothDevice device,
+                                     @Nullable Intent sourceIntent,
+                                     @NonNull String address) {
+        String name = sourceIntent == null
+                ? null : sourceIntent.getStringExtra(BluetoothDevice.EXTRA_NAME);
+        if (name == null || name.trim().isEmpty()) {
+            try {
+                if (BluetoothPermissionUtils.hasConnectPermission(this)) {
+                    name = device.getName();
+                }
+            } catch (SecurityException error) {
+                Log.w(TAG, "Unable to read Bluetooth device name for " + address, error);
+            }
+        }
+        if (name == null || name.trim().isEmpty()) {
+            BluetoothDeviceProfileEntity profile = BluetoothDeviceProfileStore.find(address);
+            if (profile != null) {
+                name = profile.getDeviceName();
+            }
+        }
+        return name == null || name.trim().isEmpty() ? address : name.trim();
+    }
 
     @SuppressLint("MissingPermission")
     private void handleBluetoothStateChanged(int state) {
@@ -842,6 +868,21 @@ public class MainActivity extends BaseActivity {
                 return getString(R.string.supporter_loading);
             case UNAVAILABLE:
             case ERROR:
+                switch (supporterSnapshot.getFailureReason()) {
+                    case PLAY_BILLING_UNAVAILABLE:
+                        return getString(R.string.supporter_play_unavailable);
+                    case NETWORK:
+                        return getString(R.string.supporter_network_error);
+                    case PRODUCT_NOT_FOUND:
+                    case NO_ELIGIBLE_OFFER:
+                        return getString(R.string.supporter_product_unavailable);
+                    case CONFIGURATION:
+                        return getString(R.string.supporter_configuration_error);
+                    case NONE:
+                    case UNKNOWN:
+                    default:
+                        return getString(R.string.supporter_unavailable);
+                }
             default:
                 return getString(R.string.supporter_unavailable);
         }
@@ -854,7 +895,7 @@ public class MainActivity extends BaseActivity {
             updateDiscoverableMenuItem();
             return;
         }
-        if (!hasBluetoothRuntimePermissions()) {
+        if (!BluetoothPermissionUtils.hasRequiredPermissions(this)) {
             requestBluetoothPermissions();
             return;
         }
@@ -889,10 +930,10 @@ public class MainActivity extends BaseActivity {
             return;
         }
 
-        if (!hasBluetoothRuntimePermissions()) {
-            discoverableMenuItem.setEnabled(false);
+        if (!BluetoothPermissionUtils.hasRequiredPermissions(this)) {
+            discoverableMenuItem.setEnabled(true);
             discoverableMenuItem.setIcon(R.drawable.ic_visibility_off);
-            discoverableMenuItem.setTitle(R.string.discoverable_status_unavailable);
+            discoverableMenuItem.setTitle(R.string.bluetooth_permission_required_title);
             return;
         }
 
@@ -914,7 +955,7 @@ public class MainActivity extends BaseActivity {
     }
 
     private boolean hasBluetoothRuntimePermissions() {
-        return BluetoothPermissionUtils.hasServerPermissions(this);
+        return BluetoothPermissionUtils.hasDiscoveryPermissions(this);
     }
 
     public Handler mHandler = new Handler(Looper.getMainLooper()) {

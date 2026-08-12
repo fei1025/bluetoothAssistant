@@ -17,6 +17,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.content.pm.PackageManager;
 import android.text.InputType;
+import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -65,7 +66,6 @@ public class HomeFragment extends BaseFragment {
     private final String TAG = "HomeFragment";
     private static final int REQUEST_ENABLE_BLUETOOTH = 0x33;
     private static final int REQUEST_DISCOVERABLE = 0x32;
-    private static final int REQUEST_SCAN_PERMISSION = 0x35;
     private static final int REQUEST_CONNECT_PERMISSION = 0x36;
     private static final int DISCOVERABLE_DURATION_SECONDS = 300;
 
@@ -359,9 +359,8 @@ public class HomeFragment extends BaseFragment {
             updateDiscoverableMenuItem();
             return;
         }
-        if (!BluetoothPermissionUtils.hasServerPermissions(requireContext())) {
-            ToastUtil.toastWord(requireContext(), getString(R.string.NoBluetoothAccess));
-            updateDiscoverableMenuItem();
+        if (!BluetoothPermissionUtils.hasRequiredPermissions(requireContext())) {
+            mainActivity.requestBluetoothPermissions();
             return;
         }
         if (!adapter.isEnabled()) {
@@ -401,27 +400,34 @@ public class HomeFragment extends BaseFragment {
         }
         BluetoothAdapter adapter = resolveBluetoothAdapter();
         if (adapter == null) {
-            discoverableMenuItem.setEnabled(false);
-            discoverableMenuItem.setIcon(R.drawable.ic_visibility_off);
-            discoverableMenuItem.setTitle(R.string.discoverable_status_unavailable);
+            setDiscoverableMenuUnavailable();
             return;
         }
 
-        if (!BluetoothPermissionUtils.hasServerPermissions(requireContext())) {
-            discoverableMenuItem.setEnabled(false);
-            discoverableMenuItem.setIcon(R.drawable.ic_visibility_off);
-            discoverableMenuItem.setTitle(R.string.discoverable_status_unavailable);
+        if (!BluetoothPermissionUtils.hasRequiredPermissions(requireContext())) {
+            setDiscoverableMenuPermissionRequired();
             return;
         }
 
+        final boolean adapterEnabled;
+        final boolean discoverable;
+        try {
+            adapterEnabled = adapter.isEnabled();
+            discoverable = adapterEnabled && adapter.getScanMode()
+                    == BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE;
+        } catch (RuntimeException error) {
+            // The permission can be revoked between the check above and the Bluetooth IPC.
+            // Some vendor Bluetooth services also surface binder failures as RuntimeException.
+            Log.w(TAG, "Unable to read Bluetooth discoverable state", error);
+            setDiscoverableMenuUnavailable();
+            return;
+        }
+
+        if (!adapterEnabled) {
+            setDiscoverableMenuUnavailable();
+            return;
+        }
         discoverableMenuItem.setEnabled(true);
-        if (!adapter.isEnabled()) {
-            discoverableMenuItem.setIcon(R.drawable.ic_visibility_off);
-            discoverableMenuItem.setTitle(R.string.discoverable_status_unavailable);
-            return;
-        }
-        boolean discoverable = adapter.getScanMode()
-                == BluetoothAdapter.SCAN_MODE_CONNECTABLE_DISCOVERABLE;
         if (discoverable) {
             discoverableMenuItem.setIcon(R.drawable.ic_visibility);
             discoverableMenuItem.setTitle(R.string.renew_discoverable);
@@ -429,6 +435,24 @@ public class HomeFragment extends BaseFragment {
             discoverableMenuItem.setIcon(R.drawable.ic_visibility_off);
             discoverableMenuItem.setTitle(R.string.open_discoverable);
         }
+    }
+
+    private void setDiscoverableMenuUnavailable() {
+        if (discoverableMenuItem == null) {
+            return;
+        }
+        discoverableMenuItem.setEnabled(false);
+        discoverableMenuItem.setIcon(R.drawable.ic_visibility_off);
+        discoverableMenuItem.setTitle(R.string.discoverable_status_unavailable);
+    }
+
+    private void setDiscoverableMenuPermissionRequired() {
+        if (discoverableMenuItem == null) {
+            return;
+        }
+        discoverableMenuItem.setEnabled(true);
+        discoverableMenuItem.setIcon(R.drawable.ic_visibility_off);
+        discoverableMenuItem.setTitle(R.string.bluetooth_permission_required_title);
     }
 
     private BluetoothAdapter resolveBluetoothAdapter() {
@@ -459,14 +483,13 @@ public class HomeFragment extends BaseFragment {
             }
             return;
         }
+        if (!BluetoothPermissionUtils.hasDiscoveryPermissions(requireContext())) {
+            mainActivity.requestBluetoothPermissions();
+            return;
+        }
         if (!adapter.isEnabled()) {
             finishScan(false);
             ToastUtil.toastWord(requireContext(), getString(R.string.initBluetooth));
-            return;
-        }
-        if (!BluetoothPermissionUtils.hasScanPermission(requireContext())) {
-            requestPermissions(BluetoothPermissionUtils.scanPermissions(),
-                    REQUEST_SCAN_PERMISSION);
             return;
         }
         scanInProgress = true;
@@ -480,14 +503,7 @@ public class HomeFragment extends BaseFragment {
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_SCAN_PERMISSION) {
-            boolean granted = grantResults.length > 0
-                    && grantResults[0] == PackageManager.PERMISSION_GRANTED;
-            com.zzf.bluetoothsmp.BluetoothTelemetry.logPermissionResult("scan", granted);
-            if (granted) {
-                startScan();
-            }
-        } else if (requestCode == REQUEST_CONNECT_PERMISSION) {
+        if (requestCode == REQUEST_CONNECT_PERMISSION) {
             boolean granted = grantResults.length > 0
                     && grantResults[0] == PackageManager.PERMISSION_GRANTED;
             com.zzf.bluetoothsmp.BluetoothTelemetry.logPermissionResult("connect", granted);

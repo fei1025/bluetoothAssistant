@@ -27,6 +27,11 @@ public final class BluetoothPermissionUtils {
         return true;
     }
 
+    /** Permissions needed to discover devices and read their names/metadata. */
+    public static boolean hasDiscoveryPermissions(Context context) {
+        return hasScanPermission(context) && hasConnectPermission(context);
+    }
+
     public static boolean hasScanPermission(Context context) {
         if (context == null) {
             return false;
@@ -57,6 +62,29 @@ public final class BluetoothPermissionUtils {
     public static String[] scanPermissions() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             return new String[]{Manifest.permission.BLUETOOTH_SCAN};
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            return new String[]{Manifest.permission.ACCESS_FINE_LOCATION};
+        }
+        return new String[0];
+    }
+
+    public static String[] discoveryPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return new String[]{Manifest.permission.BLUETOOTH_SCAN,
+                    Manifest.permission.BLUETOOTH_CONNECT};
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            return new String[]{Manifest.permission.ACCESS_FINE_LOCATION};
+        }
+        return new String[0];
+    }
+
+    public static String[] requiredPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return new String[]{Manifest.permission.BLUETOOTH_SCAN,
+                    Manifest.permission.BLUETOOTH_CONNECT,
+                    Manifest.permission.BLUETOOTH_ADVERTISE};
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             return new String[]{Manifest.permission.ACCESS_FINE_LOCATION};

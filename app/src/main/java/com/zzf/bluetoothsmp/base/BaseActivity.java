@@ -7,6 +7,7 @@ import android.os.Bundle;
 import java.util.ArrayList;
 import java.util.List;
 
+import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
 
 public class BaseActivity extends AppCompatActivity {
@@ -26,7 +27,9 @@ public class BaseActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
+        // Keep edge-to-edge behavior consistent on Android versions where it is
+        // not enforced by the platform yet. Individual screens handle insets.
+        EdgeToEdge.enable(this);
     }
 
     /*********************子类实现*****************************/

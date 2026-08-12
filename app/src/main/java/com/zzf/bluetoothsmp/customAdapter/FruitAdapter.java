@@ -69,34 +69,24 @@ public class FruitAdapter extends RecyclerView.Adapter<FruitAdapter.ViewHolder> 
         if(bitmap!=null){
             holder.fruitImage.setImageBitmap(bitmap);
         }
-        holder.button.setOnClickListener(null);
+        holder.button.setEnabled(true);
+        holder.button.setOnClickListener(v -> dispatchItemClick(fruit));
         BluetoothConnectionState connectionState = fruit.getConnectionState();
         if (connectionState == BluetoothConnectionState.CONNECTED) {
-            holder.button.setEnabled(true);
             holder.button.setText(R.string.open_session);
-            holder.button.setOnClickListener(v -> {
-                if (mOnItemDeleteListener != null) {
-                    mOnItemDeleteListener.OnItemClick(fruit);
-                }
-            });
         } else if (connectionState == BluetoothConnectionState.CONNECTING
                 || connectionState == BluetoothConnectionState.PAIRING
                 || connectionState == BluetoothConnectionState.RECONNECTING) {
-            holder.button.setEnabled(true);
             holder.button.setText(R.string.cancel_connection);
-            holder.button.setOnClickListener(v -> {
-                if (mOnItemDeleteListener != null) {
-                    mOnItemDeleteListener.OnItemClick(fruit);
-                }
-            });
         } else {
-            holder.button.setEnabled(true);
             holder.button.setText(R.string.connection);
-            holder.button.setOnClickListener(v -> {
-                if (mOnItemDeleteListener != null) {
-                    mOnItemDeleteListener.OnItemClick(fruit);
-                }
-            });
+        }
+    }
+
+    private void dispatchItemClick(Fruit fruit) {
+        onItemDeleteListener listener = mOnItemDeleteListener;
+        if (listener != null) {
+            listener.OnItemClick(fruit);
         }
     }
 

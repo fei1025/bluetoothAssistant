@@ -195,6 +195,10 @@
     <string name="supporter_pending">Your payment is pending. The badge will unlock automatically after payment completes.</string>
     <string name="supporter_badge_unlocked">Supporter badge permanently unlocked</string>
     <string name="supporter_unavailable">Google Play or this product is temporarily unavailable. Please try again later.</string>
+    <string name="supporter_play_unavailable">Google Play Billing is unavailable. Sign in to Google Play and install this app from its Play Store listing or a test track.</string>
+    <string name="supporter_network_error">A network error occurred while connecting to Google Play. Check your connection and try again.</string>
+    <string name="supporter_product_unavailable">This product is unavailable for the current Play account country or installation source. Install from Google Play and use an account in a supported country.</string>
+    <string name="supporter_configuration_error">The Google Play product configuration is invalid. Please try again later or contact the developer.</string>
     <string name="supporter_buy">Get supporter badge</string>
     <string name="supporter_restore">Restore purchase</string>
     <string name="close">Close</string>

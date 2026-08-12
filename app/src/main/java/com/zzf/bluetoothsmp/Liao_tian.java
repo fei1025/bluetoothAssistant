@@ -15,6 +15,7 @@ import android.widget.Button;
 import android.widget.EditText;
 
 import com.zzf.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.base.BaseActivity;
 import com.zzf.bluetoothsmp.customAdapter.MsgAdapter;
 import com.zzf.bluetoothsmp.entity.Msg;
 import com.zzf.bluetoothsmp.event.BluetoothType;
@@ -29,18 +30,18 @@ import java.util.List;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import static com.zzf.bluetoothsmp.R.string.ConnectTheInterrupt;
 
-public class Liao_tian extends AppCompatActivity {
+public class Liao_tian extends BaseActivity {
     static public List<Msg> msgList;
     private EditText inputText;
     RecyclerView msgRecyclerView;
@@ -86,6 +87,8 @@ public class Liao_tian extends AppCompatActivity {
         msgList = new ArrayList<>();
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_liao_tian);
+        WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
+                .setAppearanceLightStatusBars(false);
         applySystemBarInsets();
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
