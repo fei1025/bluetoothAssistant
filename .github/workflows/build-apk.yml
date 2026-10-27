@@ -26,7 +26,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: 15859902
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
       - name: Install compile SDK
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
@@ -73,7 +77,7 @@ jobs:
                   'offlineAudit': True, 'pluginDeveloperMode': True, 'sha256': checksum}
           (output / 'build-info.json').write_text(json.dumps(info, indent=2) + '\n')
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-              summary.write('### Test APK ready\n\nDownload **test-apk-' + os.environ['GITHUB_SHA'][:8] + '** from this run\'s Artifacts section.\n\n')
+              summary.write('### Test APK ready\n\nDownload **test-apk-' + os.environ['GITHUB_SHA'] + '** from this run\'s Artifacts section.\n\n')
               summary.write('Debug/test build with Firebase collection disabled. A production installation requires the original signing key; do not uninstall an existing app to bypass a signature mismatch.\n')
           PY
       - uses: actions/upload-artifact@v4
