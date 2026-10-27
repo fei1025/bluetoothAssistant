@@ -2,7 +2,7 @@
   "id": "com.zzf.example.classic",
   "name": "SPP 控制面板",
   "author": "Bluetooth Assistant",
-  "version": 1,
+  "version": 2,
   "sdk": 1,
   "entry": "index.html",
   "capabilities": [
