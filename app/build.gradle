@@ -58,6 +58,17 @@ android {
     }
 
     signingConfigs {
+        debug {
+            // CI must use the restored identity even when Android's default user
+            // keystore directory differs between SDK/AGP versions or runners.
+            def ciDebugKeystore = providers.gradleProperty('ciDebugKeystore').orNull
+            if (ciDebugKeystore != null) {
+                storeFile file(ciDebugKeystore)
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+            }
+        }
         if (hasUploadSigningConfiguration) {
             upload {
                 storeFile file(uploadSigningValues['BLUETOOTH_UPLOAD_KEYSTORE'])

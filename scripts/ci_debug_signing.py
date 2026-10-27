@@ -60,7 +60,8 @@ def verify_apk(apk, apksigner, expected):
     certificates = re.findall(r'^Signer #\d+ certificate SHA-256 digest: ([0-9a-fA-F]{64})\s*$',
                               result.stdout, re.MULTILINE)
     if [item.lower() for item in certificates] != [expected]:
-        raise ValueError('Built APK does not have the pinned test signing certificate')
+        raise ValueError('Built APK does not have the pinned test signing certificate; actual SHA-256: '
+                         + ', '.join(certificates))
     return expected
 
 

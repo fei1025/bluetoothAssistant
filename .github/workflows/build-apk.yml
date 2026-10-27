@@ -36,11 +36,11 @@ jobs:
       - name: Restore required fixed test signing key
         env:
           CI_DEBUG_KEYSTORE_BASE64: ${{ secrets.CI_DEBUG_KEYSTORE_BASE64 }}
-        run: python -B scripts/ci_debug_signing.py restore
+        run: python -B scripts/ci_debug_signing.py restore --destination "$RUNNER_TEMP/bluetooth-ci-debug.keystore"
       - name: Prepare disposable Firebase configuration
         run: python -B scripts/prepare_offline_google_services.py --ci
       - name: Build APK and run JVM tests
-        run: bash ./gradlew --no-daemon -PofflineAudit testDebugUnitTest assembleDebug
+        run: bash ./gradlew --no-daemon -PofflineAudit -PciDebugKeystore="$RUNNER_TEMP/bluetooth-ci-debug.keystore" testDebugUnitTest assembleDebug
       - name: Verify APK has the fixed test certificate
         run: python -B scripts/ci_debug_signing.py verify-apk --apk app/build/outputs/apk/debug/app-debug.apk --apksigner "$ANDROID_HOME/build-tools/36.0.0/apksigner"
       - name: Prepare APK, checksum and commit information
