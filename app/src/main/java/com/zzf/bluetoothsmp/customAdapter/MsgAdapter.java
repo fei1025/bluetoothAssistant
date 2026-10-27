@@ -1,110 +1,139 @@
 package com.zzf.bluetoothsmp.customAdapter;
 
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.content.Context;
 import android.graphics.Bitmap;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.TextView;
-
-import com.zzf.bluetoothsmp.R;
-import com.zzf.bluetoothsmp.StaticObject;
-import com.zzf.bluetoothsmp.entity.BluetoothDrive;
-import com.zzf.bluetoothsmp.entity.MessageMapper;
-import com.zzf.bluetoothsmp.entity.Msg;
-import com.zzf.bluetoothsmp.utils.ImageUtils;
-
-import org.litepal.LitePal;
-
-import java.util.List;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.zzf.bluetoothsmp.BluetoothSendStatus;
+import com.zzf.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.StaticObject;
+import com.zzf.bluetoothsmp.entity.Msg;
+import com.zzf.bluetoothsmp.utils.HexUtils;
+import com.zzf.bluetoothsmp.utils.ImageUtils;
+
+import java.text.DateFormat;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
+
+/** Rendering has no persistence side effects; anonymous devices use their MAC as their label. */
 public class MsgAdapter extends RecyclerView.Adapter<MsgAdapter.ViewHolder> {
-    private List<Msg> MsgList;
-    public Bitmap myBitmap;
-    public Bitmap outBitmap;
+    private static final int TEXT_PREVIEW_CHARS = 2048;
+    private static final int HEX_PREVIEW_BYTES = 128;
+    private final List<Msg> messages;
+    private final DateFormat timeFormat = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.MEDIUM);
+    private Bitmap localAvatar;
+    private Bitmap remoteAvatar;
 
-    public MsgAdapter(List<Msg> msgList) {
-        MsgList = msgList;
-        myBitmap=null;
-        outBitmap=null;
+    public MsgAdapter(List<Msg> messages) {
+        this.messages = messages;
     }
-
 
     @NonNull
     @Override
-    public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View inflate = LayoutInflater.from(parent.getContext()).inflate(R.layout.msg_item, parent, false);
-        return new ViewHolder(inflate);
+    public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
+        return new ViewHolder(LayoutInflater.from(parent.getContext()).inflate(R.layout.msg_item, parent, false));
     }
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        Msg msg = MsgList.get(position);
-        String bluetoothName = msg.getBluetoothName();
-        if (msg.getType() == Msg.TYPE_RECEIVED) {
-            holder.left_layout.setVisibility(View.VISIBLE);
-            holder.right_layout.setVisibility(View.GONE);
-            holder.left_msg.setText(msg.getContent());
-            if (outBitmap == null) {
-                if(bluetoothName == null || bluetoothName.length() ==0){
-                    bluetoothName=msg.getBluetoothAdd();
-                }
-                BluetoothDrive messageList = LitePal.where("driveAdd = ? and uuid=? ",msg.getBluetoothAdd(),msg.getSendUuid()).findFirst(BluetoothDrive.class);
-                if(messageList == null ){
-                    BluetoothDrive bluetoothDrive=new BluetoothDrive();
-                    bluetoothDrive.setDriveAdd(msg.getBluetoothAdd());
-                    bluetoothDrive.setUuid(msg.getSendUuid());
-                    bluetoothDrive.setDriveName(msg.getBluetoothName());
-                    bluetoothDrive.setSystemImg(outBitmap);
-                    bluetoothDrive.save();
-                }else {
-                    if(!messageList.getDriveName().equals(bluetoothName)){
-                        messageList.setDriveName(bluetoothName);
-                        messageList.save();
-                    }
-                }
-                outBitmap = ImageUtils.defaultAvatar(bluetoothName);
-
+        Msg message = messages.get(position);
+        boolean received = message.getType() == Msg.TYPE_RECEIVED;
+        holder.left.setVisibility(received ? View.VISIBLE : View.GONE);
+        holder.right.setVisibility(received ? View.GONE : View.VISIBLE);
+        String content = message.getContent() == null ? "" : message.getContent();
+        String preview = content.length() > TEXT_PREVIEW_CHARS
+                ? content.substring(0, TEXT_PREVIEW_CHARS) + "…" : content;
+        (received ? holder.leftMessage : holder.rightMessage).setText(preview);
+        if (received) {
+            if (remoteAvatar == null) {
+                String name = message.getBluetoothName();
+                if (name == null || name.trim().isEmpty()) name = message.getBluetoothAdd();
+                remoteAvatar = ImageUtils.defaultAvatar(name);
             }
-            holder.left_img.setImageBitmap(outBitmap);
-        } else if (msg.getType() == Msg.TYPE_SENT) {
-            holder.right_layout.setVisibility(View.VISIBLE);
-            holder.left_layout.setVisibility(View.GONE);
-            holder.right_msg.setText(msg.getContent());
-            if (myBitmap == null) {
-                myBitmap = ImageUtils.defaultAvatar(StaticObject.myBluetoothName);
-            }
-            holder.right_img.setImageBitmap(myBitmap);
+            holder.leftImage.setImageBitmap(remoteAvatar);
+        } else {
+            if (localAvatar == null) localAvatar = ImageUtils.defaultAvatar(StaticObject.myBluetoothName);
+            holder.rightImage.setImageBitmap(localAvatar);
         }
+        Date time = message.getSenTime();
+        String timestamp = time == null ? "" : timeFormat.format(time);
+        int label = received ? R.string.chat_received : statusLabel(message.getSendStatus());
+        String metadata = timestamp + " · " + holder.itemView.getContext().getString(label);
+        if (message.getTextEncoding() != null) metadata += " · " + message.getTextEncoding().name();
+        holder.metadata.setText(metadata);
+        byte[] payload = message.getPayload();
+        holder.raw.setVisibility(payload == null ? View.GONE : View.VISIBLE);
+        if (payload != null) {
+            byte[] previewBytes = payload.length <= HEX_PREVIEW_BYTES ? payload : Arrays.copyOf(payload, HEX_PREVIEW_BYTES);
+            holder.raw.setText("HEX: " + HexUtils.bytesToHex(previewBytes)
+                    + (payload.length > HEX_PREVIEW_BYTES ? " … (" + payload.length + " B)" : ""));
+        }
+        holder.raw.setOnLongClickListener(view -> {
+            copy(view.getContext(), view.getContext().getString(R.string.chat_copy_hex),
+                    HexUtils.bytesToHex(message.getPayload()));
+            return true;
+        });
+        holder.raw.setContentDescription(holder.raw.getText() + " · "
+                + holder.itemView.getContext().getString(R.string.chat_copy_hex));
+        (received ? holder.leftMessage : holder.rightMessage).setOnLongClickListener(view -> {
+            copy(view.getContext(), "", message.getContent());
+            return true;
+        });
+    }
 
+    private int statusLabel(BluetoothSendStatus status) {
+        if (status == null) return R.string.chat_status_unknown;
+        switch (status) {
+            case QUEUED: return R.string.chat_status_queued;
+            case SENDING: return R.string.chat_status_sending;
+            case FAILED: return R.string.chat_status_failed;
+            case CANCELED: return R.string.chat_status_canceled;
+            default: return R.string.chat_status_sent;
+        }
+    }
+
+    private void copy(Context context, String label, String content) {
+        ClipboardManager clipboard = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (clipboard != null) {
+            clipboard.setPrimaryClip(ClipData.newPlainText(label, content == null ? "" : content));
+            Toast.makeText(context, R.string.chat_copied, Toast.LENGTH_SHORT).show();
+        }
     }
 
     @Override
-    public int getItemCount() {
-        return MsgList.size();
-    }
+    public int getItemCount() { return messages.size(); }
 
-    static class ViewHolder extends RecyclerView.ViewHolder {
-        LinearLayout left_layout;
-        LinearLayout right_layout;
-        ImageView left_img;
-        ImageView right_img;
-        TextView left_msg;
-        TextView right_msg;
+    public static class ViewHolder extends RecyclerView.ViewHolder {
+        final View left;
+        final View right;
+        final TextView leftMessage;
+        final TextView rightMessage;
+        final ImageView leftImage;
+        final ImageView rightImage;
+        final TextView metadata;
+        final TextView raw;
 
-        public ViewHolder(@NonNull View view) {
+        ViewHolder(View view) {
             super(view);
-            left_layout = (LinearLayout) view.findViewById(R.id.left_layout);
-            right_layout = (LinearLayout) view.findViewById(R.id.right_layout);
-            left_msg = (TextView) view.findViewById(R.id.left_msg);
-            right_msg = (TextView) view.findViewById(R.id.right_msg);
-            left_img = view.findViewById(R.id.left_img);
-            right_img = view.findViewById(R.id.right_img);
+            left = view.findViewById(R.id.left_layout);
+            right = view.findViewById(R.id.right_layout);
+            leftMessage = view.findViewById(R.id.left_msg);
+            rightMessage = view.findViewById(R.id.right_msg);
+            leftImage = view.findViewById(R.id.left_img);
+            rightImage = view.findViewById(R.id.right_img);
+            metadata = view.findViewById(R.id.message_metadata);
+            raw = view.findViewById(R.id.message_raw);
         }
     }
 }

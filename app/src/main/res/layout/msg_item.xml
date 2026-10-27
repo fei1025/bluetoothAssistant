@@ -36,7 +36,7 @@
             android:padding="10dp"
             android:textColor="@color/black"
             android:textSize="14sp"
-            android:text="chat"
+            tools:text="chat"
             />
     </LinearLayout>
 
@@ -59,7 +59,7 @@
             android:padding="10dp"
             android:layout_marginTop="5dp"
 
-            android:text="chat"
+            tools:text="chat"
             android:textColor="@color/white"
             android:textSize="14sp" />
 
@@ -73,4 +73,18 @@
             />
     </LinearLayout>
 
+    <TextView
+        android:id="@+id/message_metadata"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/black"
+        android:textSize="11sp" />
+    <TextView
+        android:id="@+id/message_raw"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/black"
+        android:textSize="11sp"
+        android:fontFamily="monospace"
+        android:textIsSelectable="true" />
 </LinearLayout>

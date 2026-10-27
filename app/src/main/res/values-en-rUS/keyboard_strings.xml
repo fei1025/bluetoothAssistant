@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="keyboard_add">Add button</string>
+    <string name="keyboard_use_hint">Press a button to send. Enable editing to arrange buttons.</string>
+    <string name="keyboard_edit_hint">Tap to edit. Drag to move.</string>
+    <string name="keyboard_limit">You can add up to %1$d buttons.</string>
+</resources>

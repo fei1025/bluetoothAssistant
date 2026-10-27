@@ -8,7 +8,6 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import com.android.billingclient.api.AcknowledgePurchaseParams;
 import com.android.billingclient.api.BillingClient;
 import com.android.billingclient.api.BillingClientStateListener;
 import com.android.billingclient.api.BillingFlowParams;
@@ -94,6 +93,7 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
 
     private final SharedPreferences preferences;
     private final BillingClient billingClient;
+    private final Context applicationContext;
     @Nullable
     private Listener listener;
     @Nullable
@@ -105,20 +105,23 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
     private boolean connecting;
     private boolean closed;
     private boolean owned;
+    private long refreshGeneration;
     private State state;
     private FailureReason failureReason = FailureReason.NONE;
 
     public SupporterBillingManager(@NonNull Context context) {
-        Context applicationContext = context.getApplicationContext();
+        applicationContext = context.getApplicationContext();
         preferences = applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         owned = preferences.getBoolean(KEY_LAST_CONFIRMED_OWNED, false);
         state = owned ? State.OWNED : State.CONNECTING;
         billingClient = BillingClient.newBuilder(applicationContext)
                 .setListener(this)
+                .enableAutoServiceReconnection()
                 .enablePendingPurchases(PendingPurchasesParams.newBuilder()
                         .enableOneTimeProducts()
                         .build())
                 .build();
+        SupporterAcknowledgementWorker.restorePending(applicationContext);
     }
 
     public void setListener(@Nullable Listener listener) {
@@ -145,6 +148,7 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
         billingClient.startConnection(new BillingClientStateListener() {
             @Override
             public void onBillingSetupFinished(@NonNull BillingResult billingResult) {
+                if (closed) return;
                 connecting = false;
                 if (billingResult.getResponseCode() == BillingClient.BillingResponseCode.OK) {
                     refreshFromPlay();
@@ -155,6 +159,7 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
 
             @Override
             public void onBillingServiceDisconnected() {
+                if (closed) return;
                 connecting = false;
                 failureReason = FailureReason.PLAY_BILLING_UNAVAILABLE;
                 state = owned ? State.OWNED : State.ERROR;
@@ -165,6 +170,7 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
     }
 
     public void syncPurchases() {
+        if (closed) return;
         if (billingClient.isReady()) {
             refreshFromPlay();
         } else {
@@ -173,6 +179,7 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
     }
 
     public void launchPurchase(@NonNull Activity activity) {
+        if (closed) return;
         if (owned) {
             state = State.OWNED;
             publish();
@@ -208,6 +215,7 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
 
     public void close() {
         closed = true;
+        refreshGeneration++;
         listener = null;
         billingClient.endConnection();
     }
@@ -215,8 +223,11 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
     @Override
     public void onPurchasesUpdated(@NonNull BillingResult billingResult,
                                    @Nullable List<Purchase> purchases) {
+        if (closed) return;
         int responseCode = billingResult.getResponseCode();
         if (responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
+            // Reject a query started before this newly completed purchase.
+            refreshGeneration++;
             processPurchases(purchases, false);
         } else if (responseCode == BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED) {
             queryPurchases();
@@ -226,16 +237,18 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
     }
 
     private void refreshFromPlay() {
+        if (closed) return;
+        long generation = ++refreshGeneration;
         if (!owned) {
             failureReason = FailureReason.NONE;
             state = State.CONNECTING;
             publish();
         }
-        queryProductDetails();
-        queryPurchases();
+        queryProductDetails(generation);
+        queryPurchases(generation);
     }
 
-    private void queryProductDetails() {
+    private void queryProductDetails(long generation) {
         QueryProductDetailsParams.Product product = QueryProductDetailsParams.Product.newBuilder()
                 .setProductId(SUPPORTER_BADGE_PRODUCT_ID)
                 .setProductType(BillingClient.ProductType.INAPP)
@@ -244,6 +257,7 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
                 .setProductList(Collections.singletonList(product))
                 .build();
         billingClient.queryProductDetailsAsync(params, (billingResult, result) -> {
+            if (closed || generation != refreshGeneration) return;
             if (billingResult.getResponseCode() != BillingClient.BillingResponseCode.OK
                     || result.getProductDetailsList().isEmpty()) {
                 productDetails = null;
@@ -283,10 +297,15 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
     }
 
     private void queryPurchases() {
+        queryPurchases(++refreshGeneration);
+    }
+
+    private void queryPurchases(long generation) {
         QueryPurchasesParams params = QueryPurchasesParams.newBuilder()
                 .setProductType(BillingClient.ProductType.INAPP)
                 .build();
         billingClient.queryPurchasesAsync(params, (billingResult, purchases) -> {
+            if (closed || generation != refreshGeneration) return;
             if (billingResult.getResponseCode() == BillingClient.BillingResponseCode.OK) {
                 processPurchases(purchases, true);
             } else {
@@ -404,8 +423,7 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
         }
         state = owned ? State.OWNED : State.ERROR;
         Log.w(TAG, "Billing " + operation + " failed: code="
-                + billingResult.getResponseCode() + ", message="
-                + billingResult.getDebugMessage());
+                + billingResult.getResponseCode());
         publish();
     }
 
@@ -413,19 +431,12 @@ public final class SupporterBillingManager implements PurchasesUpdatedListener {
         if (purchase == null || purchase.isAcknowledged()) {
             return;
         }
-        AcknowledgePurchaseParams params = AcknowledgePurchaseParams.newBuilder()
-                .setPurchaseToken(purchase.getPurchaseToken())
-                .build();
-        billingClient.acknowledgePurchase(params, billingResult -> {
-            // An unacknowledged purchase remains queryable, so a later foreground sync retries.
-            if (billingResult.getResponseCode() != BillingClient.BillingResponseCode.OK) {
-                state = State.OWNED;
-                Log.w(TAG, "Purchase acknowledgement failed: code="
-                        + billingResult.getResponseCode() + ", message="
-                        + billingResult.getDebugMessage());
-                publish();
-            }
-        });
+        try {
+            SupporterAcknowledgementWorker.enqueue(applicationContext, purchase.getPurchaseToken());
+        } catch (RuntimeException failure) {
+            // A later authoritative foreground sync retries persistence/scheduling.
+            Log.w(TAG, "Unable to schedule purchase acknowledgement");
+        }
     }
 
     private void setOwned(boolean owned) {

@@ -70,6 +70,9 @@ public class Liantian_new extends BaseActivity {
     String infoType;
 
     BluetoothDrive drive;
+    private BluetoothServiceConnect sessionConnection;
+    private String sessionId;
+    private static final String STATE_SESSION_ID = "chat_transport_session";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -87,6 +90,17 @@ public class Liantian_new extends BaseActivity {
         });
         applyEdgeToEdgeForChatPage();
         initData();
+        sessionId = savedInstanceState == null ? null : savedInstanceState.getString(STATE_SESSION_ID);
+        if (drive == null || drive.getDriveAdd() == null) {
+            finish();
+            return;
+        }
+        BluetoothServiceConnect current = StaticObject.bluetoothSocketMap.get(drive.getDriveAdd());
+        if (current != null && (sessionId == null || sessionId.equals(current.getSessionId()))) {
+            sessionConnection = current;
+            sessionId = current.getSessionId();
+            drive.setUuid(current.getSendUuid());
+        }
 
         ViewPager2 viewPager = findViewById(R.id.view_pager);
         SectionsPagerAdapter adapter = new SectionsPagerAdapter(this);
@@ -103,7 +117,6 @@ public class Liantian_new extends BaseActivity {
         }).attach();// 不要忘记attach()，否则没效果
 
         Toolbar toolbar = findViewById(R.id.lao_tian_toolbar);
-        toolbar.setTitle("demo");
         setSupportActionBar(toolbar);
     }
 
@@ -155,7 +168,7 @@ public class Liantian_new extends BaseActivity {
         infoType = getIntent().getStringExtra("infoType");
         }
         if (bluetoothName == null || bluetoothName.length() == 0) {
-            bluetoothName = "无";
+            bluetoothName = drive == null ? getString(R.string.unknown) : drive.getDriveAdd();
         }
         toolbar.setTitle(bluetoothName);
 
@@ -188,29 +201,33 @@ public class Liantian_new extends BaseActivity {
         return true;
     }
 
-    public void senMsg(String s){
-        System.out.println("-----------------------------------");
-        System.out.println(s);
-        BluetoothServiceConnect bluetoothServiceConnect = StaticObject.bluetoothSocketMap.get(drive.getDriveAdd());
-        if (bluetoothServiceConnect == null) {
-            ToastUtil.toastWord(MyApplication.getContext(), "请连接后重试");
-            return;
+    public void senMsg(String text) {
+        sendText(text);
+    }
+
+    public boolean sendText(String text) {
+        BluetoothServiceConnect connection = sessionConnection;
+        if (drive == null || connection == null
+                || StaticObject.bluetoothSocketMap.get(drive.getDriveAdd()) != connection) {
+            ToastUtil.toastWord(this, getString(R.string.chat_connection_ended));
+            return false;
         }
-        if (!"".equals(s)) {
-            try {
-                byte[] payload = bluetoothServiceConnect.encodeTextPayload(s);
-                Msg eventDatum = new Msg(payload, Msg.TYPE_SENT, drive.getDriveAdd());
-                eventDatum.setContent(s);
-                eventDatum.setBluetoothName(drive.getDriveName());
-                eventDatum.setBluetoothAdd(drive.getDriveAdd());
-                eventDatum.setSendUuid(drive.getUuid());
-                StaticObject.mTaskQueue.put(eventDatum);
-            } catch (IllegalArgumentException error) {
-                ToastUtil.toastWord(this, error.getMessage());
-            } catch (Exception e) {
-                e.printStackTrace();
-                Log.e(TAG, "senMsg: 发送信息异常", e);
+        if (text == null || text.isEmpty()) return false;
+        try {
+            Msg message = new Msg(connection.encodeTextPayload(text), Msg.TYPE_SENT, drive.getDriveAdd());
+            message.setContent(text);
+            if (!connection.bindOutboundMessage(message)) {
+                ToastUtil.toastWord(this, getString(R.string.chat_connection_ended));
+                return false;
             }
+            if (!StaticObject.submitMessage(message)) {
+                ToastUtil.toastWord(this, getString(R.string.send_queue_full));
+                return false;
+            }
+            return true;
+        } catch (IllegalArgumentException error) {
+            ToastUtil.toastWord(this, error.getMessage());
+            return false;
         }
     }
 
@@ -218,13 +235,35 @@ public class Liantian_new extends BaseActivity {
 
     public void exit() {
         StaticObject.bluetoothEvent.deleteAllEventByUuid(UUID);
-        BluetoothServiceConnect connection = StaticObject.bluetoothSocketMap.get(drive.getDriveAdd());
+        BluetoothServiceConnect connection = sessionConnection;
         if (connection != null) {
             // Let the session remove itself so the connection registry also reaches
             // DISCONNECTED; removing the map entry first would hide that transition.
             connection.close();
         }
         finish();
+    }
+
+    /** A remote/stale disconnect finishes this screen without closing a replacement transport. */
+    public void finishSession() {
+        finish();
+    }
+
+    public String getSessionId() { return sessionId; }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (sessionId != null && (sessionConnection == null
+                || StaticObject.bluetoothSocketMap.get(drive.getDriveAdd()) != sessionConnection)) {
+            finishSession();
+        }
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle state) {
+        state.putString(STATE_SESSION_ID, sessionId);
+        super.onSaveInstanceState(state);
     }
 
     @Override

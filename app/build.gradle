@@ -4,6 +4,35 @@ plugins {
     id 'com.google.firebase.crashlytics'
 }
 
+// Keep command-line releases independent from Android Studio's locked intermediates.
+def releasePipelineBuildDir = providers.gradleProperty('releasePipelineBuildDir').orNull
+if (releasePipelineBuildDir != null) {
+    layout.buildDirectory.set(file(releasePipelineBuildDir))
+}
+
+def uploadSigningVariables = [
+        'BLUETOOTH_UPLOAD_KEYSTORE',
+        'BLUETOOTH_UPLOAD_STORE_PASSWORD',
+        'BLUETOOTH_UPLOAD_KEY_ALIAS',
+        'BLUETOOTH_UPLOAD_KEY_PASSWORD'
+]
+def uploadSigningValues = uploadSigningVariables.collectEntries { variable ->
+    [(variable): providers.environmentVariable(variable).orNull]
+}
+def configuredUploadSigningVariables = uploadSigningVariables.findAll { variable ->
+    def value = uploadSigningValues[variable]
+    value != null && !value.trim().isEmpty()
+}
+def hasUploadSigningConfiguration = !configuredUploadSigningVariables.isEmpty()
+if (hasUploadSigningConfiguration
+        && configuredUploadSigningVariables.size() != uploadSigningVariables.size()) {
+    def missingVariables = uploadSigningVariables - configuredUploadSigningVariables
+    // Report names only: never interpolate passwords, aliases or keystore values.
+    throw new GradleException('Incomplete release upload signing configuration. '
+            + 'Missing environment variables: ' + missingVariables.join(', ')
+            + '. Set all four variables, or leave all unset for an unsigned audit build.')
+}
+
 android {
     namespace 'com.zzf.bluetoothsmp'
     compileSdk 36
@@ -12,18 +41,51 @@ android {
         applicationId "com.zzf.bluetoothsmp"
         minSdk 23
         targetSdk 36
-        versionCode 25
-        versionName "2.5"
+        buildConfigField 'boolean', 'PLUGIN_DEVELOPER_MODE', 'false'
+        buildConfigField 'String', 'PLUGIN_CATALOG_URL', '"https://fei1025.github.io/bluetoothAssistant/plugins/catalog.json"'
+        buildConfigField 'boolean', 'OFFLINE_AUDIT', providers.gradleProperty('offlineAudit').isPresent().toString()
+        def requestedVersionCode = providers.gradleProperty('releaseVersionCode').orNull
+        def effectiveVersionCode = requestedVersionCode == null ? 28 : Integer.parseInt(requestedVersionCode)
+        if (effectiveVersionCode < 1 || effectiveVersionCode > 2100000000) {
+            throw new GradleException('releaseVersionCode must be between 1 and 2100000000')
+        }
+        versionCode effectiveVersionCode
+        versionName providers.gradleProperty('releaseVersionName').getOrElse("2.8")
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        testProguardFiles 'proguard-android-test.pro'
 
     }
 
+    signingConfigs {
+        if (hasUploadSigningConfiguration) {
+            upload {
+                storeFile file(uploadSigningValues['BLUETOOTH_UPLOAD_KEYSTORE'])
+                storePassword uploadSigningValues['BLUETOOTH_UPLOAD_STORE_PASSWORD']
+                keyAlias uploadSigningValues['BLUETOOTH_UPLOAD_KEY_ALIAS']
+                keyPassword uploadSigningValues['BLUETOOTH_UPLOAD_KEY_PASSWORD']
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            buildConfigField 'boolean', 'PLUGIN_DEVELOPER_MODE', 'true'
+            manifestPlaceholders = [telemetryCollectionEnabled: 'false']
+        }
         release {
+            manifestPlaceholders = [telemetryCollectionEnabled: providers.gradleProperty('offlineAudit').isPresent() ? 'false' : 'true']
+            if (hasUploadSigningConfiguration) {
+                signingConfig signingConfigs.upload
+            }
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            firebaseCrashlytics {
+                // Offline CI/audit builds must not upload production mapping files.
+                mappingFileUploadEnabled = !providers.gradleProperty('offlineAudit').isPresent() &&
+                        !providers.gradleProperty('skipMappingUpload').isPresent()
+            }
         }
     }
     compileOptions {
@@ -40,53 +102,108 @@ android {
             enableSplit true
         }
         language {
-            // This is disabled so that the App Bundle does NOT split the APK for each language.
-            // We're gonna use the same APK for all languages.
-            enableSplit true
+            // The in-app language picker must work offline after Play installation.
+            // Ship both supported languages together instead of on-demand splits.
+            enableSplit false
         }
     }
     buildFeatures {
+        buildConfig true
         viewBinding true
+    }
+    // Ephemeral CI signing permits instrumentation of the actual optimized variant.
+    if (providers.gradleProperty('releaseSmokeTest').isPresent()) {
+        testBuildType 'release'
+        sourceSets.androidTest.java.setSrcDirs(['src/releaseSmokeTest/java'])
+    }
+}
+
+// The upload pipeline reads the actual Gradle configuration, including CLI overrides.
+tasks.register('writeReleaseUploadMetadata') {
+    dependsOn 'bundleRelease'
+    doLast {
+        def metadata = [
+                packageName: android.defaultConfig.applicationId,
+                versionCode: android.defaultConfig.versionCode,
+                versionName: android.defaultConfig.versionName,
+                compileSdk: android.compileSdk,
+                targetSdk: android.defaultConfig.targetSdkVersion.apiLevel,
+                minSdk: android.defaultConfig.minSdkVersion.apiLevel,
+                gradle: gradle.gradleVersion,
+                agp: com.android.Version.ANDROID_GRADLE_PLUGIN_VERSION,
+                java: System.getProperty('java.version'),
+                offlineAudit: providers.gradleProperty('offlineAudit').isPresent(),
+                mappingUploadEnabled: !providers.gradleProperty('offlineAudit').isPresent() &&
+                        !providers.gradleProperty('skipMappingUpload').isPresent(),
+                runtimeDependencies: configurations.releaseRuntimeClasspath.resolvedConfiguration.resolvedArtifacts.collect { artifact ->
+                    def digest = java.security.MessageDigest.getInstance('SHA-256')
+                    artifact.file.withInputStream { source ->
+                        byte[] buffer = new byte[65536]
+                        int count
+                        while ((count = source.read(buffer)) != -1) digest.update(buffer, 0, count)
+                    }
+                    [coordinate: artifact.moduleVersion.id.toString(), sha256: digest.digest().encodeHex().toString()]
+                }.sort { it.coordinate }
+        ]
+        def destination = layout.buildDirectory.file('outputs/release-pipeline/metadata.json').get().asFile
+        destination.parentFile.mkdirs()
+        destination.setText(groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(metadata)), 'UTF-8')
     }
 }
 
 dependencies {
 
     // Google Play Billing for the non-consumable supporter badge.
-    implementation 'com.android.billingclient:billing:9.1.0'
+    implementation 'com.android.billingclient:billing:8.3.0'
 
     implementation 'androidx.appcompat:appcompat:1.6.1'
+    // 1.16 raises minSdk to 24; retain Android 6 support.
+    implementation 'androidx.webkit:webkit:1.14.0'
     implementation 'com.google.android.material:material:1.14.0'
     implementation 'androidx.core:core:1.16.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.3.1'
-    implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.3.1'
+    implementation 'androidx.swiperefreshlayout:swiperefreshlayout:1.1.0'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel:2.3.1'
     implementation 'androidx.navigation:navigation-fragment:2.5.2'
     implementation 'androidx.navigation:navigation-ui:2.5.2'
-    implementation 'androidx.legacy:legacy-support-v4:1.0.0'
-    implementation 'com.google.firebase:firebase-crashlytics:18.2.9'
-    implementation 'com.google.firebase:firebase-analytics:20.1.2'
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
     //圆角图片
     implementation 'de.hdodenhof:circleimageview:3.1.0'
 
-    androidTestImplementation 'androidx.test.ext:junit:1.1.3'
-    androidTestImplementation 'androidx.test.espresso:espresso-core:3.4.0'
+    if (providers.gradleProperty('releaseSmokeTest').isPresent()) {
+        // Framework-only optimized smoke uses the Java driver. New Kotlin test
+        // drivers require stdlib methods legitimately removed from the shipped APK.
+        // Do not weaken production R8 rules just to retain a test driver's ABI.
+        androidTestImplementation 'androidx.test.ext:junit:1.1.3'
+        androidTestImplementation 'androidx.test:runner:1.4.0'
+    } else {
+        // 3.7 uses InputManager through system services on API 36 minor images.
+        androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+        androidTestImplementation 'androidx.test:runner:1.7.0'
+        androidTestImplementation 'androidx.test.espresso:espresso-core:3.7.0'
+        debugImplementation 'androidx.concurrent:concurrent-futures-ktx:1.3.0'
+    }
     //根据名字生成头像
     implementation 'com.github.amoskorir:avatarimagegenerator:1.5.0'
     // 谷歌更新插件
-    implementation 'com.google.android.play:app-update-ktx:2.1.0'
     implementation 'com.google.android.play:app-update:2.1.0'
+    // 2.11 retains API 23 support; 2.12 raises minSdk to 24.
+    implementation 'androidx.work:work-runtime:2.11.2'
 
     //LitePal for Android 数据库操作
     implementation 'org.litepal.guolindev:core:3.2.3'
     //侧滑删除效果
-    implementation 'com.github.mcxtzhang:SwipeDelMenuLayout:V1.2.1'
+    implementation('com.github.mcxtzhang:SwipeDelMenuLayout:V1.2.1') {
+        // Its classes use platform APIs; the legacy POM appcompat adds conflicting attributes.
+        exclude group: 'com.android.support'
+    }
     //debug 动态查询数据库
-    debugImplementation 'com.amitshekhar.android:debug-db:1.0.6'
-    //Firebase
-    implementation platform('com.google.firebase:firebase-bom:32.2.0')
+    debugImplementation 'com.github.amitshekhariitbhu.Android-Debug-Database:debug-db:1.0.7'
+    // Firebase libraries use one BoM so Analytics and Crashlytics stay compatible.
+    implementation platform('com.google.firebase:firebase-bom:34.16.0')
     implementation 'com.google.firebase:firebase-analytics'
+    implementation 'com.google.firebase:firebase-crashlytics'
 
 
 

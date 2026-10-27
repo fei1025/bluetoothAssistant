@@ -1,0 +1,4 @@
+Bluetooth works while the app is in the foreground. Connections close in the background or when locked; returning restores listening and auto-reconnect per your settings.
+Fixed the server switch, canceling continuous sends and stale send records.
+Improved disconnect and large-send stability, language switching and first-launch language selection.
+Requires Android 6.0 or later.

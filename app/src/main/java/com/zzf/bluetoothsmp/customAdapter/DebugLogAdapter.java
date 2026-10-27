@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.zzf.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.DebugLogStore;
 import com.zzf.bluetoothsmp.databinding.ItemDebugLogBinding;
 import com.zzf.bluetoothsmp.entity.LogItem;
 
@@ -19,7 +20,7 @@ import java.util.Locale;
 
 public class DebugLogAdapter extends RecyclerView.Adapter<DebugLogAdapter.LogViewHolder> {
 
-    private List<LogItem> logItems = new ArrayList<>();
+    private final DebugLogStore logItems = new DebugLogStore(500, 4L * 1024 * 1024);
     private SimpleDateFormat timeFormat = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
     private boolean showHex = true;
 
@@ -33,11 +34,29 @@ public class DebugLogAdapter extends RecyclerView.Adapter<DebugLogAdapter.LogVie
     }
 
     public void addLog(LogItem item) {
-        logItems.add(0, item);
-        if (logItems.size() > 500) {
-            logItems.remove(logItems.size() - 1);
+        addLogs(java.util.Collections.singletonList(item));
+    }
+
+    public void addLogs(List<LogItem> items) {
+        // One immutable-size batch notification covers insertions AND all byte-budget evictions.
+        for (LogItem item : items) logItems.add(item);
+        notifyDataSetChanged();
+    }
+
+    public void replaceLogs(List<LogItem> items) {
+        logItems.clear();
+        // Store inserts at the head; retain the snapshot's newest-first ordering.
+        for (int index = items.size() - 1; index >= 0; index--) logItems.add(items.get(index));
+        notifyDataSetChanged();
+    }
+
+    public void updateStatus(String messageId, String status) {
+        for (int index = 0; index < logItems.size(); index++) {
+            LogItem item = logItems.get(index);
+            if (messageId.equals(item.getMessageId())) {
+                item.setSendStatus(status); notifyItemChanged(index); return;
+            }
         }
-        notifyItemInserted(0);
     }
 
     public void clearLogs() {
@@ -46,7 +65,7 @@ public class DebugLogAdapter extends RecyclerView.Adapter<DebugLogAdapter.LogVie
     }
 
     public List<LogItem> getLogs() {
-        return new ArrayList<>(logItems);
+        return logItems.snapshot();
     }
 
     @NonNull
@@ -81,11 +100,13 @@ public class DebugLogAdapter extends RecyclerView.Adapter<DebugLogAdapter.LogVie
 
             // Direction
             if (item.isSent()) {
-                binding.direction.setText("SEND");
+                binding.direction.setText(item.getSendStatus() == null
+                        ? itemView.getContext().getString(R.string.debug_log_send)
+                        : itemView.getContext().getString(R.string.debug_log_send) + " " + item.getSendStatus());
                 binding.direction.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.debug_hex));
                 binding.getRoot().setBackgroundColor(ContextCompat.getColor(itemView.getContext(), R.color.debug_log_sent));
             } else {
-                binding.direction.setText("RECV");
+                binding.direction.setText(R.string.debug_log_receive);
                 binding.direction.setTextColor(ContextCompat.getColor(itemView.getContext(), R.color.debug_ascii));
                 binding.getRoot().setBackgroundColor(ContextCompat.getColor(itemView.getContext(), R.color.debug_log_received));
             }

@@ -27,6 +27,7 @@ public class BluetoothDrive extends LitePalSupport implements Serializable {
 
     public void setSystemImgByte(byte[] systemImgByte) {
         this.systemImgByte = systemImgByte;
+        this.systemImg = null;
     }
 
     public String getUuid() {
@@ -80,8 +81,7 @@ public class BluetoothDrive extends LitePalSupport implements Serializable {
     public Bitmap getSystemImg() {
         if (systemImg == null) {
             if (systemImgByte != null && systemImgByte.length !=0) {
-                Bitmap bms = BitmapFactory.decodeByteArray(systemImgByte, 0, systemImgByte.length);
-                return bms;
+                systemImg = BitmapFactory.decodeByteArray(systemImgByte, 0, systemImgByte.length);
             }
         }
         return systemImg;

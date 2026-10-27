@@ -8,6 +8,29 @@ import java.util.Collections;
 import java.util.List;
 
 public final class CommandMacroStore {
+    public static void importForAddress(String address, List<CommandMacroEntity> imported) {
+        String target = com.zzf.bluetoothsmp.utils.BluetoothAddressUtils.normalize(address);
+        if (target == null) throw new IllegalArgumentException("Invalid import target");
+        // Validate the whole bounded transfer before opening a write transaction.
+        MacroTransferCodec.exportMacros(imported);
+        for (CommandMacroEntity item : imported) MacroParser.parse(item.getScript());
+        android.database.sqlite.SQLiteDatabase database = LitePal.getDatabase();
+        database.beginTransaction();
+        try {
+            for (CommandMacroEntity item : imported) {
+                String name = item.getName().trim();
+                CommandMacroEntity existing = findByName(target, name);
+                if (existing == null) { existing = new CommandMacroEntity(); existing.setBluetoothAddress(target); }
+                existing.setName(name); existing.setScript(item.getScript());
+                existing.setRepeatCount(item.getRepeatCount());
+                long now = System.currentTimeMillis();
+                if (existing.getCreatedAt() <= 0) existing.setCreatedAt(now);
+                existing.setUpdatedAt(now);
+                if (!existing.save()) throw new IllegalStateException("Could not persist imported macro");
+            }
+            database.setTransactionSuccessful();
+        } finally { database.endTransaction(); }
+    }
     private CommandMacroStore() {
     }
 
@@ -38,6 +61,30 @@ public final class CommandMacroStore {
             macro.setCreatedAt(now);
         }
         macro.setUpdatedAt(now);
-        macro.save();
+        if (!macro.save()) throw new IllegalStateException("Could not persist macro");
+    }
+
+    /** Run on a storage worker. Serialize the lookup and upsert with concurrent imports. */
+    public static void saveForAddress(String address, String name, String script, int repeat) {
+        String target = com.zzf.bluetoothsmp.utils.BluetoothAddressUtils.normalize(address);
+        if (target == null || name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("Invalid macro target or name");
+        }
+        android.database.sqlite.SQLiteDatabase database = LitePal.getDatabase();
+        database.beginTransaction();
+        try {
+            CommandMacroEntity macro = findByName(target, name);
+            if (macro == null) {
+                macro = new CommandMacroEntity();
+                macro.setBluetoothAddress(target);
+            }
+            macro.setName(name.trim());
+            macro.setScript(script);
+            macro.setRepeatCount(repeat);
+            save(macro);
+            database.setTransactionSuccessful();
+        } finally {
+            database.endTransaction();
+        }
     }
 }

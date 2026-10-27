@@ -9,6 +9,8 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.fragment.app.Fragment;
 
+import com.zzf.bluetoothsmp.BluetoothTelemetry;
+
 /**
  * 基类 Fragment，统一处理 Android 15 边缘到边缘显示
  */
@@ -17,6 +19,21 @@ import androidx.fragment.app.Fragment;
 
 
 public abstract class BaseFragment extends Fragment {
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        BluetoothTelemetry.logScreenView(getAnalyticsScreenName(),
+                getClass().getSimpleName());
+    }
+
+    /** Stable logical screen name for Analytics; subclasses may override if renamed. */
+    protected String getAnalyticsScreenName() {
+        String className = getClass().getSimpleName();
+        return className.endsWith("Fragment")
+                ? className.substring(0, className.length() - "Fragment".length())
+                : className;
+    }
 
     /**
      * 适配沉浸式状态栏

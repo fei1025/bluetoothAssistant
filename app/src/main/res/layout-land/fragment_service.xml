@@ -62,15 +62,15 @@
                         app:layout_constraintTop_toBottomOf="@+id/currentIdentifierTextView"
                         android:layout_marginTop="8dp"
                         android:textSize="13sp"
-                        android:text="00001101-0000-1000-8000-00805F9B34FB" />
+                        android:text="@string/default_spp_uuid" />
 
                     <com.google.android.material.switchmaterial.SwitchMaterial
                         android:id="@+id/enable_iconnect"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:gravity="center"
-                        android:textOff="关"
-                        android:textOn="开"
+                        android:textOff="@string/switch_off"
+                        android:textOn="@string/switch_on"
                         android:checked="true"
                         app:layout_constraintRight_toRightOf="parent"
                         app:layout_constraintTop_toTopOf="parent"
@@ -135,7 +135,7 @@
                         app:layout_constraintTop_toBottomOf="@+id/clientPort"
                         android:layout_marginTop="8dp"
                         android:textSize="13sp"
-                        android:text="00001101-0000-1000-8000-00805F9B34FB" />
+                        android:text="@string/default_spp_uuid" />
 
                     <Button
                         android:id="@+id/editClietnUUid"

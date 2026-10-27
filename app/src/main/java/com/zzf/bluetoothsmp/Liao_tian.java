@@ -1,305 +1,200 @@
 package com.zzf.bluetoothsmp;
 
-import android.annotation.SuppressLint;
-import android.content.DialogInterface;
-import android.content.Intent;
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.os.Message;
-import android.util.Log;
+import android.text.InputType;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.widget.Button;
+import android.widget.ArrayAdapter;
 import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.Spinner;
+import android.widget.Toast;
 
-import com.zzf.bluetoothsmp.R;
-import com.zzf.bluetoothsmp.base.BaseActivity;
-import com.zzf.bluetoothsmp.customAdapter.MsgAdapter;
-import com.zzf.bluetoothsmp.entity.Msg;
-import com.zzf.bluetoothsmp.event.BluetoothType;
-import com.zzf.bluetoothsmp.entity.MessageMapper;
-import com.zzf.bluetoothsmp.liaoTian.Liantian_new;
-import com.zzf.bluetoothsmp.utils.ToastUtil;
-
-import org.litepal.LitePal;
-
-import java.util.ArrayList;
-import java.util.List;
-
+import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
-import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
 
-import static com.zzf.bluetoothsmp.R.string.ConnectTheInterrupt;
+import com.zzf.bluetoothsmp.base.BaseActivity;
+import com.zzf.bluetoothsmp.liaoTian.ChatTranscriptController;
 
+import java.text.ParsePosition;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.Locale;
+
+/** Browsing saved messages never owns, sends through, or closes an active Bluetooth transport. */
 public class Liao_tian extends BaseActivity {
-    static public List<Msg> msgList;
-    private EditText inputText;
-    RecyclerView msgRecyclerView;
-    public String TAG = "Liao_tian";
-    private String bluetoothAdd;
-    private String UUID;
-    String bluetoothName;
-    String bluetoothUUid;
-    String infoType;
-
-    public Handler mHandler = new Handler(Looper.getMainLooper()) {
-        @Override
-        public void handleMessage(Message msg) {
-            if (isFinishing() || isDestroyed()) {
-                return;
-            }
-            switch (msg.what) {
-                case 0:
-                    List<Msg> msgList = Liao_tian.msgList;
-                    if (msgList == null || msg.obj == null) {
-                        return;
-                    }
-                    msgList.add((Msg) msg.obj);
-                    if (msgRecyclerView != null && msgRecyclerView.getAdapter() != null) {
-                        msgRecyclerView.getAdapter().notifyItemInserted(msgList.size() - 1);
-                        msgRecyclerView.scrollToPosition(msgList.size() - 1);
-                    }
-                    break;
-                case 1:
-                    ToastUtil.toastWord(Liao_tian.this, Liao_tian.this.getString(ConnectTheInterrupt));
-                    exit();
-                    break;
-                default:
-                    Log.e(TAG, "Unknown msg " + msg.what);
-                    break;
-            }
-        }
-    };
+    private static final int SEARCH_MENU = Menu.FIRST;
+    private ChatTranscriptController transcript;
+    private String keyword = "";
+    private String fromDate = "";
+    private String toDate = "";
+    private int direction;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        UUID = java.util.UUID.randomUUID().toString();
-        msgList = new ArrayList<>();
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_liao_tian);
         WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView())
                 .setAppearanceLightStatusBars(false);
+        String address = getIntent().getStringExtra("bluetoothAdd");
+        String uuid = getIntent().getStringExtra("bluetoothUUid");
+        String name = getIntent().getStringExtra("bluetoothName");
+        Toolbar toolbar = findViewById(R.id.lao_tian_toolbar);
+        toolbar.setTitle(name == null || name.trim().isEmpty() ? address : name);
+        setSupportActionBar(toolbar);
+        if (getSupportActionBar() != null) getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+        findViewById(R.id.history_input_bar).setVisibility(View.GONE);
         applySystemBarInsets();
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
-            @Override
-            public void handleOnBackPressed() {
-                handleBackPressed();
+            @Override public void handleOnBackPressed() { finish(); }
+        });
+        transcript = new ChatTranscriptController(findViewById(R.id.legacy_chat_root),
+                address, uuid, null, null);
+        if (savedInstanceState != null) {
+            keyword = savedInstanceState.getString("history_keyword", "");
+            fromDate = savedInstanceState.getString("history_from", "");
+            toDate = savedInstanceState.getString("history_to", "");
+            direction = savedInstanceState.getInt("history_direction", 0);
+            applyFilter();
+        }
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(@NonNull Menu menu) {
+        menu.add(Menu.NONE, SEARCH_MENU, Menu.NONE, R.string.history_search)
+                .setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == android.R.id.home) {
+            finish();
+            return true;
+        }
+        if (item.getItemId() == SEARCH_MENU) {
+            showSearch();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+    private void showSearch() {
+        LinearLayout fields = new LinearLayout(this);
+        fields.setOrientation(LinearLayout.VERTICAL);
+        int padding = (int) (20 * getResources().getDisplayMetrics().density);
+        fields.setPadding(padding, padding, padding, 0);
+        EditText text = field(fields, R.string.history_keyword, keyword);
+        EditText from = field(fields, R.string.history_from_date, fromDate);
+        EditText to = field(fields, R.string.history_to_date, toDate);
+        Spinner type = new Spinner(this);
+        type.setContentDescription(getString(R.string.history_direction));
+        type.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item,
+                new String[]{getString(R.string.history_all), getString(R.string.history_received),
+                        getString(R.string.history_sent)}));
+        type.setSelection(direction);
+        fields.addView(type);
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle(R.string.history_search)
+                .setView(fields).setNegativeButton(R.string.cancel, null)
+                .setPositiveButton(R.string.confirm, null).create();
+        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
+            String previousKeyword = keyword;
+            String previousFrom = fromDate;
+            String previousTo = toDate;
+            int previousDirection = direction;
+            keyword = text.getText().toString();
+            fromDate = from.getText().toString().trim();
+            toDate = to.getText().toString().trim();
+            direction = type.getSelectedItemPosition();
+            if (applyFilter()) {
+                dialog.dismiss();
+            } else {
+                keyword = previousKeyword;
+                fromDate = previousFrom;
+                toDate = previousTo;
+                direction = previousDirection;
             }
         });
-        Toolbar toolbar = findViewById(R.id.lao_tian_toolbar);
-        bluetoothName = getIntent().getStringExtra("bluetoothName");
-        bluetoothAdd = getIntent().getStringExtra("bluetoothAdd");
-        bluetoothUUid = getIntent().getStringExtra("bluetoothUUid");
-        infoType = getIntent().getStringExtra("infoType");
-        if (bluetoothName == null || bluetoothName.length() == 0) {
-            bluetoothName = "无";
+    }
+
+    private EditText field(LinearLayout parent, int hint, String value) {
+        EditText field = new EditText(this);
+        field.setHint(hint);
+        field.setSingleLine(true);
+        field.setInputType(InputType.TYPE_CLASS_TEXT);
+        field.setText(value);
+        parent.addView(field);
+        return field;
+    }
+
+    private boolean applyFilter() {
+        try {
+            Long from = parseDate(fromDate, false);
+            Long to = parseDate(toDate, true);
+            if (from != null && to != null && from >= to) throw new IllegalArgumentException();
+            transcript.setHistoryFilter(keyword, from, to,
+                    direction == 0 ? null : direction == 1 ? 0 : 1);
+            return true;
+        } catch (IllegalArgumentException error) {
+            Toast.makeText(this, R.string.history_date_invalid, Toast.LENGTH_SHORT).show();
+            return false;
         }
-        toolbar.setTitle(bluetoothName);
-        setSupportActionBar(toolbar);
-        inputText = findViewById(R.id.input_text);
-        Button send = findViewById(R.id.send);
-        msgRecyclerView = findViewById(R.id.msg_recycler_view);
-        LinearLayoutManager linearLayout = new LinearLayoutManager(this);
-        msgRecyclerView.setLayoutManager(linearLayout);
-        initMsg();
-        MsgAdapter adapter = new MsgAdapter(msgList);
-        msgRecyclerView.setAdapter(adapter);
-        if (!msgList.isEmpty()) {
-            msgRecyclerView.scrollToPosition(msgList.size() - 1);
-        }
-        send.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                BluetoothServiceConnect bluetoothServiceConnect = StaticObject.bluetoothSocketMap.get(bluetoothAdd);
-                if (bluetoothServiceConnect == null) {
-                    ToastUtil.toastWord(MyApplication.getContext(), "请连接后重试");
-                    return;
-                }
-                String s = inputText.getText().toString();
-                if (!"".equals(s)) {
-                    try {
-                        byte[] payload = bluetoothServiceConnect.encodeTextPayload(s);
-                        Msg eventDatum = new Msg(payload, Msg.TYPE_SENT, bluetoothAdd);
-                        eventDatum.setContent(s);
-                        eventDatum.setBluetoothName(bluetoothName);
-                        eventDatum.setBluetoothAdd(bluetoothAdd);
-                        eventDatum.setSendUuid(bluetoothUUid);
-                        StaticObject.mTaskQueue.put(eventDatum);
-                        inputText.setText("");
-                    } catch (IllegalArgumentException error) {
-                        ToastUtil.toastWord(Liao_tian.this, error.getMessage());
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-        });
-        //监听接受数据
-        StaticObject.bluetoothEvent.addEventListener(BluetoothType.RECEIVE, l -> {
-            Msg msg = (Msg) l.getEventData()[0];
-            if (bluetoothAdd.equals(msg.getBluetoothAdd())) {
-                senHandlerMsg(0, msg);
-            }
-        }, UUID);
-        //监听发送数据
-        StaticObject.bluetoothEvent.addEventListener(BluetoothType.SEND, l -> {
-            Msg msg = (Msg) l.getEventData()[0];
-            Log.d(TAG, "onCreate: " + msg.toString());
-            if (bluetoothAdd.equals(msg.getBluetoothAdd())) {
-                senHandlerMsg(0, msg);
-            }
-        }, UUID);
-        //监听断开连接
-        StaticObject.bluetoothEvent.addEventListener(BluetoothType.NOT_CONNECT, l -> {
-            Msg msg = (Msg) l.getEventData()[0];
-            if (bluetoothAdd.equals(msg.getBluetoothAdd())) {
-                senHandlerMsg(1, msg);
-            }
-        }, UUID);
+    }
+
+    private Long parseDate(String text, boolean exclusiveEnd) {
+        if (text.isEmpty()) return null;
+        if (!text.matches("\\d{4}-\\d{2}-\\d{2}")) throw new IllegalArgumentException();
+        SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd", Locale.ROOT);
+        format.setLenient(false);
+        ParsePosition position = new ParsePosition(0);
+        Date date = format.parse(text, position);
+        if (date == null || position.getIndex() != text.length()) throw new IllegalArgumentException();
+        Calendar calendar = Calendar.getInstance();
+        calendar.setTime(date);
+        if (exclusiveEnd) calendar.add(Calendar.DAY_OF_YEAR, 1);
+        return calendar.getTimeInMillis();
     }
 
     private void applySystemBarInsets() {
         View root = findViewById(R.id.legacy_chat_root);
         View appBar = findViewById(R.id.legacy_chat_appbar);
         View content = findViewById(R.id.legacy_chat_content);
-        if (root == null || appBar == null || content == null) {
-            return;
-        }
-
-        final int appBarStart = appBar.getPaddingStart();
-        final int appBarTop = appBar.getPaddingTop();
-        final int appBarEnd = appBar.getPaddingEnd();
-        final int appBarBottom = appBar.getPaddingBottom();
-        final int contentStart = content.getPaddingStart();
-        final int contentTop = content.getPaddingTop();
-        final int contentEnd = content.getPaddingEnd();
-        final int contentBottom = content.getPaddingBottom();
-
+        int top = appBar.getPaddingTop();
+        int left = content.getPaddingLeft();
+        int right = content.getPaddingRight();
+        int bottom = content.getPaddingBottom();
         ViewCompat.setOnApplyWindowInsetsListener(root, (view, insets) -> {
-            Insets safeInsets = insets.getInsets(
-                    WindowInsetsCompat.Type.systemBars()
-                            | WindowInsetsCompat.Type.displayCutout());
-            appBar.setPaddingRelative(
-                    appBarStart,
-                    appBarTop + safeInsets.top,
-                    appBarEnd,
-                    appBarBottom);
-            content.setPaddingRelative(
-                    contentStart + safeInsets.left,
-                    contentTop,
-                    contentEnd + safeInsets.right,
-                    contentBottom + safeInsets.bottom);
+            Insets safe = insets.getInsets(WindowInsetsCompat.Type.systemBars()
+                    | WindowInsetsCompat.Type.displayCutout());
+            appBar.setPadding(appBar.getPaddingLeft(), top + safe.top,
+                    appBar.getPaddingRight(), appBar.getPaddingBottom());
+            content.setPadding(left + safe.left, content.getPaddingTop(), right + safe.right, bottom + safe.bottom);
             return insets;
         });
         ViewCompat.requestApplyInsets(root);
     }
 
-
-  /*  // 创建多选择框按钮
     @Override
-    public boolean onCreateOptionsMenu(@NonNull Menu menu) {
-        getMenuInflater().inflate(R.menu.liao_tian, menu);
-        return true;
-    }*/
-
-
-    @Override
-    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        //return super.onOptionsItemSelected(item);
-        if (item.getItemId() == R.id.Disconnect) {
-            if ("0".equals(infoType)) {
-                dialog(getString(R.string.bluetoothDisconnected));
-            } else {
-                dialog(getString(R.string.cutBluetooth));
-            }
-        }
-        return true;
+    protected void onSaveInstanceState(@NonNull Bundle state) {
+        state.putString("history_keyword", keyword);
+        state.putString("history_from", fromDate);
+        state.putString("history_to", toDate);
+        state.putInt("history_direction", direction);
+        super.onSaveInstanceState(state);
     }
-
-    private void handleBackPressed() {
-        if ("0".equals(infoType)) {
-            exit();
-        } else {
-            dialog(getString(R.string.cutBluetooth));
-        }
-    }
-
-    public void initMsg() {
-        if (bluetoothAdd == null || bluetoothUUid == null) {
-            return;
-        }
-        List<MessageMapper> messageList = LitePal.where(" sendAdd =? and sendUuid = ?", bluetoothAdd, bluetoothUUid).order("sendTime ").find(MessageMapper.class);
-        if (messageList != null && messageList.size() != 0) {
-            for (MessageMapper ms : messageList) {
-
-                Msg m = new Msg(ms.getMessage(), ms.getType(), ms.getSendAdd());
-                if (Msg.TYPE_RECEIVED == ms.getType()) {
-                    m.setBluetoothName(ms.getSendName());
-                } else {
-                    m.setBluetoothName(ms.getReceiveName());
-                }
-                m.setSendUuid(ms.getSendUuid());
-                msgList.add(m);
-            }
-
-        }
-    }
-
-    public void dialog(String s) {
-        AlertDialog.Builder dialog = new AlertDialog.Builder(Liao_tian.this);
-        dialog.setTitle(getString(R.string.tips));
-        dialog.setMessage(s);
-        dialog.setCancelable(false);
-        dialog.setPositiveButton(getString(R.string.confirm), new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                exit();
-            }
-        });
-        dialog.setNegativeButton(getString(R.string.cancel), new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-            }
-        });
-        dialog.show();
-    }
-
-    public void exit() {
-        StaticObject.bluetoothEvent.deleteAllEventByUuid(UUID);
-        BluetoothServiceConnect connection = StaticObject.bluetoothSocketMap.get(bluetoothAdd);
-        if (connection != null) {
-            // Let the session remove itself so the connection registry also reaches
-            // DISCONNECTED; removing the map entry first would hide that transition.
-            connection.close();
-        }
-        finish();
-    }
-
 
     @Override
     protected void onDestroy() {
-        StaticObject.bluetoothEvent.deleteAllEventByUuid(UUID);
-        mHandler.removeCallbacksAndMessages(null);
+        if (transcript != null) transcript.close();
         super.onDestroy();
-    }
-
-    public void senHandlerMsg(int what, Object m) {
-        if (isFinishing() || isDestroyed()) {
-            return;
-        }
-        Message msg = new Message();
-        msg.what = what;
-        msg.obj = m;
-        mHandler.sendMessage(msg);
     }
 }

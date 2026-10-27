@@ -1,0 +1,13 @@
+{
+  "id": "com.zzf.example.ble",
+  "name": "BLE 数据面板",
+  "author": "Bluetooth Assistant",
+  "version": 1,
+  "sdk": 1,
+  "entry": "index.html",
+  "capabilities": [
+    "ble.scan",
+    "ble.connect",
+    "ble.gatt"
+  ]
+}

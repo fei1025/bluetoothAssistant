@@ -5,5 +5,9 @@ public enum BluetoothSendStatus {
     SENDING,
     SENT,
     FAILED,
-    CANCELED
+    CANCELED;
+
+    public boolean isTerminal() {
+        return this == SENT || this == FAILED || this == CANCELED;
+    }
 }

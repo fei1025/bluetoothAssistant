@@ -5,6 +5,7 @@ import android.os.Bundle;
 import android.util.Log;
 
 import com.google.firebase.analytics.FirebaseAnalytics;
+import com.google.firebase.crashlytics.CustomKeysAndValues;
 import com.google.firebase.crashlytics.FirebaseCrashlytics;
 
 /**
@@ -24,14 +25,21 @@ public final class BluetoothTelemetry {
     private BluetoothTelemetry() {
     }
 
-    public static void initialize(Context context) {
+    public static void initialize(Context context, boolean collectionEnabled) {
         if (context == null) {
             return;
         }
         try {
-            analytics = FirebaseAnalytics.getInstance(context.getApplicationContext());
-            crashlytics = FirebaseCrashlytics.getInstance();
+            FirebaseAnalytics currentAnalytics =
+                    FirebaseAnalytics.getInstance(context.getApplicationContext());
+            FirebaseCrashlytics currentCrashlytics = FirebaseCrashlytics.getInstance();
+            currentAnalytics.setAnalyticsCollectionEnabled(collectionEnabled);
+            currentCrashlytics.setCrashlyticsCollectionEnabled(collectionEnabled);
+            analytics = collectionEnabled ? currentAnalytics : null;
+            crashlytics = collectionEnabled ? currentCrashlytics : null;
         } catch (RuntimeException error) {
+            analytics = null;
+            crashlytics = null;
             Log.w(TAG, "Firebase telemetry is unavailable", error);
         }
     }
@@ -93,8 +101,12 @@ public final class BluetoothTelemetry {
         logEvent(eventName, params);
     }
 
-    public static void logDisconnect() {
-        logEvent("disconnect", null);
+    public static void logDisconnect(String reason, long sessionDurationMillis) {
+        Bundle params = new Bundle();
+        params.putString("mode", "spp");
+        params.putString("reason", safeValue(reason, "unknown"));
+        params.putLong("session_duration_ms", Math.max(0L, sessionDurationMillis));
+        logEvent("disconnect", params);
     }
 
     public static void logServerEvent(String eventName) {
@@ -106,21 +118,63 @@ public final class BluetoothTelemetry {
         logEvent(eventName, null);
     }
 
-    public static void logSessionSummary(String mode, long sentBytes, long receivedBytes,
-                                         long sendCount, long receiveCount) {
+    public static void logSessionSummary(String mode, long sessionDurationMillis,
+                                         long sentBytes, long receivedBytes,
+                                         long sendCount, long receiveCount,
+                                         long failedSendCount, long errorCount,
+                                         String closeReason) {
         Bundle params = new Bundle();
         params.putString("mode", safeMode(mode));
+        params.putLong("session_duration_ms", Math.max(0L, sessionDurationMillis));
         params.putLong("sent_bytes", Math.max(0L, sentBytes));
         params.putLong("received_bytes", Math.max(0L, receivedBytes));
         params.putLong("send_count", Math.max(0L, sendCount));
         params.putLong("receive_count", Math.max(0L, receiveCount));
+        params.putLong("failed_send_count", Math.max(0L, failedSendCount));
+        params.putLong("error_count", Math.max(0L, errorCount));
+        params.putString("close_reason", safeValue(closeReason, "unknown"));
         logEvent("data_session_summary", params);
+    }
+
+    public static void logScreenView(String screenName, String screenClass) {
+        Bundle params = new Bundle();
+        params.putString(FirebaseAnalytics.Param.SCREEN_NAME,
+                safeValue(screenName, "unknown"));
+        params.putString(FirebaseAnalytics.Param.SCREEN_CLASS,
+                safeValue(screenClass, "Fragment"));
+        logEvent(FirebaseAnalytics.Event.SCREEN_VIEW, params);
+    }
+
+    public static void logScanStart(String source) {
+        Bundle params = new Bundle();
+        params.putString("source", safeValue(source, "unknown"));
+        logEvent("scan_start", params);
+    }
+
+    public static void logScanComplete(int resultCount, long durationMillis, String outcome) {
+        Bundle params = new Bundle();
+        params.putLong("result_count", Math.max(0, resultCount));
+        params.putLong("scan_duration_ms", Math.max(0L, durationMillis));
+        params.putString("outcome", safeValue(outcome, "unknown"));
+        logEvent("scan_complete", params);
+    }
+
+    public static void logDeviceSelected(BluetoothConnectionState state) {
+        Bundle params = new Bundle();
+        params.putString("connection_state", state == null ? "UNKNOWN" : state.name());
+        logEvent("device_selected", params);
     }
 
     public static void logUserAction(String eventName) {
         if ("log_exported".equals(eventName) || "diagnostic_report_copied".equals(eventName)) {
             logEvent(eventName, null);
         }
+    }
+
+    public static void logSupportDeveloperClick(boolean alreadyOwned) {
+        Bundle params = new Bundle();
+        params.putString("supporter_status", alreadyOwned ? "owned" : "not_owned");
+        logEvent("support_developer_click", params);
     }
 
     public static void logPermissionResult(String operation, boolean granted) {
@@ -149,13 +203,15 @@ public final class BluetoothTelemetry {
 
     public static void recordNonFatal(Throwable error, BluetoothConnectionErrorCode code) {
         FirebaseCrashlytics current = crashlytics;
-        if (current == null || error == null) {
+        if (current == null || !BluetoothTelemetryPolicy.shouldRecordNonFatal(error)) {
             return;
         }
         try {
-            current.setCustomKey("last_error_code", code == null
-                    ? BluetoothConnectionErrorCode.UNKNOWN_ERROR.name() : code.name());
-            current.recordException(error);
+            CustomKeysAndValues keys = new CustomKeysAndValues.Builder()
+                    .putString("last_error_code", code == null
+                            ? BluetoothConnectionErrorCode.UNKNOWN_ERROR.name() : code.name())
+                    .build();
+            current.recordException(error, keys);
         } catch (RuntimeException telemetryError) {
             Log.w(TAG, "Unable to record Crashlytics exception", telemetryError);
         }
@@ -178,6 +234,10 @@ public final class BluetoothTelemetry {
     }
 
     private static String uuidType(String uuid) {
-        return DEFAULT_SPP_UUID.equalsIgnoreCase(uuid) ? "default_spp" : "custom";
+        return BluetoothTelemetryPolicy.uuidType(uuid, DEFAULT_SPP_UUID);
+    }
+
+    private static String safeValue(String value, String fallback) {
+        return value == null || value.trim().isEmpty() ? fallback : value;
     }
 }

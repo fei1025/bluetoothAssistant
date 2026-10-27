@@ -1,199 +1,129 @@
 package com.zzf.bluetoothsmp;
 
-import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
-/** Incremental, bounded decoder for common SPP framing strategies. */
+/** Incremental, bounded decoder. Delimiter matching is linear in the input size. */
 public final class StreamFrameDecoder {
     private final BluetoothFrameConfig config;
-    private final ByteArrayOutputStream currentFrame = new ByteArrayOutputStream();
-    private final ByteArrayOutputStream discardWindow = new ByteArrayOutputStream();
+    private final byte[] delimiter;
+    private final int[] delimiterPrefix;
+    private byte[] buffer = new byte[128];
+    private int size;
+    private int matchedDelimiter;
     private int droppedFrameCount;
     private boolean discardingOversizedFrame;
-    private long lastDataTimestamp = -1L;
+    private long lastDataTimestamp = Long.MIN_VALUE;
 
     public StreamFrameDecoder(BluetoothFrameConfig config) {
-        if (config == null) {
-            throw new IllegalArgumentException("config must not be null");
-        }
+        if (config == null) throw new IllegalArgumentException("config must not be null");
         this.config = config;
+        delimiter = config.getDelimiter();
+        delimiterPrefix = new int[delimiter.length];
+        for (int i = 1, matched = 0; i < delimiter.length; i++) {
+            while (matched > 0 && delimiter[i] != delimiter[matched]) matched = delimiterPrefix[matched - 1];
+            if (delimiter[i] == delimiter[matched]) matched++;
+            delimiterPrefix[i] = matched;
+        }
     }
 
     public synchronized List<byte[]> append(byte[] bytes, int length) {
-        return append(bytes, length, System.currentTimeMillis());
+        return append(bytes, length, monotonicMillis());
     }
 
     public synchronized List<byte[]> append(byte[] bytes, int length, long nowMillis) {
-        if (bytes == null || length < 0 || length > bytes.length) {
-            throw new IllegalArgumentException("invalid input buffer");
+        if (bytes == null || length < 0 || length > bytes.length) throw new IllegalArgumentException("invalid input buffer");
+        List<byte[]> frames = new ArrayList<>();
+        // A delayed timer must not merge two bursts that were separated by an idle gap.
+        flushExpired(nowMillis, frames);
+        if (length == 0) return frames;
+        if (config.getMode() == BluetoothFrameMode.RAW) {
+            for (int offset = 0; offset < length;) {
+                int count = Math.min(config.getMaxFrameBytes(), length - offset);
+                frames.add(Arrays.copyOfRange(bytes, offset, offset + count));
+                offset += count;
+            }
+            lastDataTimestamp = Long.MIN_VALUE;
+            return frames;
         }
-        if (length == 0) {
-            return new ArrayList<>();
+        for (int i = 0; i < length; i++) {
+            byte value = bytes[i];
+            switch (config.getMode()) {
+                case FIXED_LENGTH:
+                    appendByte(value);
+                    if (size == config.getFixedLength()) emit(frames, size);
+                    break;
+                case TIMEOUT:
+                    if (!discardingOversizedFrame) {
+                        if (size == config.getMaxFrameBytes()) {
+                            size = 0;
+                            discardingOversizedFrame = true;
+                        } else appendByte(value);
+                    }
+                    break;
+                default:
+                    appendDelimited(value, frames);
+                    break;
+            }
         }
-        lastDataTimestamp = nowMillis;
-        List<byte[]> frames;
-        switch (config.getMode()) {
-            case RAW:
-                frames = appendRaw(bytes, length);
-                break;
-            case FIXED_LENGTH:
-                frames = appendFixed(bytes, length);
-                break;
-            case TIMEOUT:
-                frames = appendTimeout(bytes, length);
-                break;
-            case CRLF:
-            case LF:
-            case CR:
-            case CUSTOM:
-            default:
-                frames = appendDelimited(bytes, length);
-                break;
-        }
-        if (config.getMode() != BluetoothFrameMode.RAW) {
-            lastDataTimestamp = currentFrame.size() == 0 && !discardingOversizedFrame
-                    ? -1L : nowMillis;
-        }
+        lastDataTimestamp = size > 0 || discardingOversizedFrame ? nowMillis : Long.MIN_VALUE;
         return frames;
     }
 
     public synchronized List<byte[]> pollTimeout(long nowMillis) {
         List<byte[]> frames = new ArrayList<>();
-        long timeoutMillis = config.getTimeoutMillis();
-        if (timeoutMillis <= 0 || lastDataTimestamp < 0
-                || nowMillis - lastDataTimestamp < timeoutMillis) {
-            return frames;
-        }
-        if (discardingOversizedFrame) {
-            droppedFrameCount++;
-            resetDiscarding();
-        } else if (currentFrame.size() > 0) {
-            frames.add(currentFrame.toByteArray());
-            currentFrame.reset();
-        }
-        lastDataTimestamp = -1L;
+        flushExpired(nowMillis, frames);
         return frames;
     }
 
-    public synchronized int getDroppedFrameCount() {
-        return droppedFrameCount;
+    private void flushExpired(long nowMillis, List<byte[]> frames) {
+        long timeout = config.getTimeoutMillis();
+        if (timeout <= 0 || lastDataTimestamp == Long.MIN_VALUE || nowMillis - lastDataTimestamp < timeout) return;
+        if (discardingOversizedFrame) droppedFrameCount++;
+        else if (size > 0) frames.add(Arrays.copyOf(buffer, size));
+        resetFrame();
     }
 
-    public synchronized int getBufferedByteCount() {
-        return currentFrame.size();
-    }
-
-    private List<byte[]> appendRaw(byte[] bytes, int length) {
-        List<byte[]> frames = new ArrayList<>();
-        int offset = 0;
-        while (offset < length) {
-            int chunkLength = Math.min(config.getMaxFrameBytes(), length - offset);
-            frames.add(Arrays.copyOfRange(bytes, offset, offset + chunkLength));
-            offset += chunkLength;
+    private void appendDelimited(byte value, List<byte[]> frames) {
+        while (matchedDelimiter > 0 && value != delimiter[matchedDelimiter]) {
+            matchedDelimiter = delimiterPrefix[matchedDelimiter - 1];
         }
-        lastDataTimestamp = -1L;
-        return frames;
-    }
-
-    private List<byte[]> appendFixed(byte[] bytes, int length) {
-        List<byte[]> frames = new ArrayList<>();
-        for (int i = 0; i < length; i++) {
-            currentFrame.write(bytes[i]);
-            if (currentFrame.size() == config.getFixedLength()) {
-                frames.add(currentFrame.toByteArray());
-                currentFrame.reset();
-                lastDataTimestamp = -1L;
-            }
-        }
-        return frames;
-    }
-
-    private List<byte[]> appendTimeout(byte[] bytes, int length) {
-        List<byte[]> frames = new ArrayList<>();
-        for (int i = 0; i < length; i++) {
-            currentFrame.write(bytes[i]);
-            if (currentFrame.size() > config.getMaxFrameBytes()) {
-                currentFrame.reset();
-                droppedFrameCount++;
-                lastDataTimestamp = -1L;
-            }
-        }
-        return frames;
-    }
-
-    private List<byte[]> appendDelimited(byte[] bytes, int length) {
-        List<byte[]> frames = new ArrayList<>();
-        byte[] delimiter = config.getDelimiter();
-        for (int i = 0; i < length; i++) {
-            byte value = bytes[i];
-            if (discardingOversizedFrame) {
-                appendDiscardByte(value, delimiter);
-                if (endsWith(discardWindow, delimiter)) {
-                    droppedFrameCount++;
-                    resetDiscarding();
-                }
-                continue;
-            }
-
-            currentFrame.write(value);
-            if (endsWith(currentFrame, delimiter)) {
-                byte[] all = currentFrame.toByteArray();
-                int payloadLength = all.length - delimiter.length;
-                if (payloadLength > config.getMaxFrameBytes()) {
-                    droppedFrameCount++;
-                } else {
-                    frames.add(Arrays.copyOf(all, payloadLength));
-                }
-                currentFrame.reset();
-                lastDataTimestamp = -1L;
-            } else if (currentFrame.size() > config.getMaxFrameBytes() + delimiter.length) {
-                beginDiscarding(currentFrame, delimiter);
-            }
-        }
-        return frames;
-    }
-
-    private void beginDiscarding(ByteArrayOutputStream source, byte[] delimiter) {
-        byte[] all = source.toByteArray();
-        discardWindow.reset();
-        int keep = Math.min(Math.max(0, delimiter.length - 1), all.length);
-        if (keep > 0) {
-            discardWindow.write(all, all.length - keep, keep);
-        }
-        source.reset();
-        discardingOversizedFrame = true;
-    }
-
-    private void appendDiscardByte(byte value, byte[] delimiter) {
-        discardWindow.write(value);
-        int maxWindow = Math.max(1, delimiter.length);
-        if (discardWindow.size() > maxWindow) {
-            byte[] all = discardWindow.toByteArray();
-            discardWindow.reset();
-            discardWindow.write(all, all.length - maxWindow, maxWindow);
+        if (value == delimiter[matchedDelimiter]) matchedDelimiter++;
+        if (!discardingOversizedFrame) appendByte(value);
+        if (matchedDelimiter == delimiter.length) {
+            if (discardingOversizedFrame || size - delimiter.length > config.getMaxFrameBytes()) droppedFrameCount++;
+            else frames.add(Arrays.copyOf(buffer, size - delimiter.length));
+            resetFrame();
+        } else if (!discardingOversizedFrame
+                && (long) size > (long) config.getMaxFrameBytes() + delimiter.length) {
+            size = 0;
+            discardingOversizedFrame = true;
         }
     }
 
-    private boolean endsWith(ByteArrayOutputStream source, byte[] suffix) {
-        if (suffix.length == 0 || source.size() < suffix.length) {
-            return false;
+    private void appendByte(byte value) {
+        if (size == buffer.length) {
+            long ceiling = Math.min(Integer.MAX_VALUE - 8L,
+                    (long) config.getMaxFrameBytes() + delimiter.length + 1L);
+            int next = (int) Math.min(ceiling, Math.max((long) size + 1L, 2L * buffer.length));
+            buffer = Arrays.copyOf(buffer, next);
         }
-        byte[] all = source.toByteArray();
-        int start = all.length - suffix.length;
-        for (int i = 0; i < suffix.length; i++) {
-            if (all[start + i] != suffix[i]) {
-                return false;
-            }
-        }
-        return true;
+        buffer[size++] = value;
     }
 
-    private void resetDiscarding() {
+    private void emit(List<byte[]> frames, int count) {
+        frames.add(Arrays.copyOf(buffer, count));
+        resetFrame();
+    }
+    private void resetFrame() {
+        size = 0;
+        matchedDelimiter = 0;
         discardingOversizedFrame = false;
-        discardWindow.reset();
-        currentFrame.reset();
-        lastDataTimestamp = -1L;
+        lastDataTimestamp = Long.MIN_VALUE;
     }
+    public synchronized int getDroppedFrameCount() { return droppedFrameCount; }
+    public synchronized int getBufferedByteCount() { return size; }
+    public static long monotonicMillis() { return TimeUnit.NANOSECONDS.toMillis(System.nanoTime()); }
 }

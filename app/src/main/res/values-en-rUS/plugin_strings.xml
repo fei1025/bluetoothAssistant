@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="plugin_center">Plugin center</string>
+    <string name="plugin_back">Back</string>
+    <string name="plugin_import">Import plugin file</string>
+    <string name="plugin_download_url">Download from HTTPS URL</string>
+    <string name="plugin_refresh">Refresh official catalogue</string>
+    <string name="plugin_example_classic">Install official SPP example</string>
+    <string name="plugin_example_ble">Install official BLE example</string>
+    <string name="plugin_installed">Installed plugins</string>
+    <string name="plugin_catalogue">Official catalogue</string>
+    <string name="plugin_empty">No plugins installed. Start with an official example.</string>
+    <string name="plugin_details">Details and management</string>
+    <string name="plugin_run">Run plugin</string>
+    <string name="plugin_install">Install</string>
+    <string name="plugin_update">Update</string>
+    <string name="plugin_uninstall">Uninstall plugin</string>
+    <string name="plugin_clear_data">Clear configuration</string>
+    <string name="plugin_stop">Stop plugin</string>
+    <string name="plugin_disconnect">Disconnect</string>
+    <string name="plugin_revoke">Revoke access</string>
+    <string name="plugin_loading">Loading plugin…</string>
+    <string name="plugin_revoked">Access revoked and connections closed. Authorization is required to use this plugin again.</string>
+    <string name="plugin_operation_ok">Operation completed</string>
+    <string name="plugin_operation_error">Operation failed (%1$s). Existing plugins and configuration are retained.</string>
+    <string name="plugin_developer_mode">Development build: unreviewed plugins can run. Only use code you trust.</string>
+    <string name="plugin_install_notice">Plugins can scan and control Bluetooth devices after authorization. Release builds only accept reviewed plugins.</string>
+    <string name="plugin_update_notice">Install this version? Configuration is retained. New capabilities require authorization.</string>
+    <string name="plugin_uninstall_notice">Uninstall this plugin and revoke access? Its configuration will be retained.</string>
+    <string name="plugin_clear_notice">Permanently delete this plugin configuration and revoke access?</string>
+    <string name="plugin_detail_text">ID: %1$s
+Author: %2$s
+Version: %3$d
+Requested capabilities:
+%4$s
+Author key fingerprint: %5$s</string>
+    <string name="plugin_authorize">Allow plugin Bluetooth access?</string>
+    <string name="plugin_authorize_text">%1$s requests these capabilities:
+%2$s
+Device information and traffic are processed locally by this plugin. You can stop it or revoke access at any time.</string>
+    <string name="plugin_device_authorize">Allow this device connection?</string>
+    <string name="plugin_device_authorize_text">%1$s requests a connection to %2$s device %3$s and permission to read and write data within its authorized capabilities.</string>
+    <string name="plugin_cap_classic_scan">List paired devices and discover classic Bluetooth devices</string>
+    <string name="plugin_cap_classic_connect">Connect and disconnect classic Bluetooth devices</string>
+    <string name="plugin_cap_classic_io">Receive and send raw classic Bluetooth bytes</string>
+    <string name="plugin_cap_ble_scan">Scan BLE devices and inspect advertisements</string>
+    <string name="plugin_cap_ble_connect">Connect and disconnect BLE devices</string>
+    <string name="plugin_cap_ble_gatt">Read, write and subscribe to BLE characteristics; query MTU and RSSI</string>
+    <string name="plugin_webview_update">Update Android System WebView or Chrome to use the security APIs required by plugins.</string>
+    <string name="plugin_unresponsive">Plugin stopped: the page stopped responding or a resource failed verification. Bluetooth connections were closed.</string>
+    <string name="plugin_device_busy">This device is in use by a plugin. Stop the plugin first.</string>
+</resources>

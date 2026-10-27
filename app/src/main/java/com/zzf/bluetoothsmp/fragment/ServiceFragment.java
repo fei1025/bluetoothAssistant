@@ -35,17 +35,22 @@ import com.zzf.bluetoothsmp.R;
 import com.google.android.material.switchmaterial.SwitchMaterial;
 import com.zzf.bluetoothsmp.BluetoothObject;
 import com.zzf.bluetoothsmp.BluetoothService;
+import com.zzf.bluetoothsmp.BluetoothServerSettings;
 import com.zzf.bluetoothsmp.MainActivity;
-import com.zzf.bluetoothsmp.entity.SystemInfoMapper;
-import com.zzf.bluetoothsmp.utils.StringUtils;
+import com.zzf.bluetoothsmp.StaticObject;
+import com.zzf.bluetoothsmp.utils.BluetoothUuidRepository;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
 
-import org.litepal.LitePal;
 
 import java.io.IOException;
 import java.util.UUID;
 
 public class ServiceFragment extends BaseFragment {
+
+    @Override
+    protected String getAnalyticsScreenName() {
+        return "service";
+    }
 
     private static final int REQUEST_DISCOVERABLE = 0x31;
     private static final int DISCOVERABLE_DURATION_SECONDS = 300;
@@ -54,6 +59,19 @@ public class ServiceFragment extends BaseFragment {
     private TextView discoverableStatus;
     private Button openDiscoverable;
     private boolean scanModeReceiverRegistered;
+    private SwitchMaterial serverSwitch;
+    private boolean serverSwitchReady;
+    private View currentRoot;
+    private int viewGeneration;
+    private int uuidRequest;
+    private boolean uuidLoaded;
+    private String serverUuid = BluetoothObject.SPP_UUID;
+    private String clientUuid = BluetoothObject.SPP_UUID;
+    private Button editServerUuid;
+    private Button editClientUuid;
+    private TextView serverUuidText;
+    private TextView clientUuidText;
+    private AlertDialog uuidDialog;
 
     private final BroadcastReceiver scanModeReceiver = new BroadcastReceiver() {
         @Override
@@ -73,11 +91,12 @@ public class ServiceFragment extends BaseFragment {
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
                              @Nullable Bundle savedInstanceState) {
         View inflate = inflater.inflate(R.layout.fragment_service, container, false);
+        currentRoot = inflate;
+        viewGeneration++;
         // 适配 Android 15 边缘到边模式
         setupEdgeToEdge(inflate);
 
         mainActivity = (MainActivity) getActivity();
-        BluetoothService bluetoothService = mainActivity.bluetoothService;
 
         Toolbar toolbar = inflate.findViewById(R.id.lao_tian_toolbar);
         toolbar.setTitle(R.string.service_name);
@@ -88,6 +107,7 @@ public class ServiceFragment extends BaseFragment {
         initClient(inflate);
         initReconnect(inflate);
         initDiscoverable(inflate);
+        loadUuidConfig(null);
         return inflate;
     }
 
@@ -102,158 +122,158 @@ public class ServiceFragment extends BaseFragment {
     }
 
     public void init(View inflate) {
-
-        TextView viewById = inflate.findViewById(R.id.currentIdentifierTextViewUUid);
-        SystemInfoMapper first = LitePal.findFirst(SystemInfoMapper.class);
-        if(first!=null && StringUtils.isNotEmpty(first.getServiceSpp())){
-            viewById.setText(first.getServiceSpp());
-        }
-
-
-        SwitchMaterial enable_iconnect = inflate.findViewById(R.id.enable_iconnect);
-        enable_iconnect.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                // 切换事件发生时执行的操作
-                if (isChecked) {
-                    // SwitchMaterial被切换到选中状态
-                    if (mainActivity.bluetoothService == null) {
-                        enable_iconnect.setChecked(false);
-                        senHandlerMessage(0, getString(R.string.bluetooth_port_error));
-                        return;
-                    }
-                    try {
-                        mainActivity.bluetoothService.createService();
-                    } catch (IOException e) {
-                        enable_iconnect.setChecked(false);
-                        senHandlerMessage(0, getString(R.string.bluetooth_port_error));
-                    }
-                } else {
-                    // SwitchMaterial被切换到非选中状态
-                    if (mainActivity.bluetoothService != null) {
-                        mainActivity.bluetoothService.stop();
-                    }
-                }
+        serverUuidText = inflate.findViewById(R.id.currentIdentifierTextViewUUid);
+        serverUuidText.setText(serverUuid);
+        editServerUuid = inflate.findViewById(R.id.editUUid);
+        editServerUuid.setOnClickListener(view -> requestUuidDialog(true));
+        serverSwitchReady = false;
+        serverSwitch = inflate.findViewById(R.id.enable_iconnect);
+        serverSwitch.setSaveEnabled(false);
+        serverSwitch.setChecked(BluetoothServerSettings.isEnabled(requireContext()));
+        serverSwitch.setOnCheckedChangeListener((buttonView, enabled) -> {
+            if (!serverSwitchReady || mainActivity == null) return;
+            try { mainActivity.setBluetoothServerEnabled(enabled); }
+            catch (IOException | RuntimeException error) {
+                senHandlerMessage(0, getString(R.string.bluetooth_port_error));
             }
         });
-
-
-
-        Button editUUid = inflate.findViewById(R.id.editUUid);
-        editUUid.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                SystemInfoMapper first = LitePal.findFirst(SystemInfoMapper.class);
-                String serviceSpp = new String(BluetoothObject.SPP_UUID);
-                if(first!=null && StringUtils.isNotEmpty(first.getServiceSpp())){
-                    serviceSpp=first.getServiceSpp();
-                }
-                viewById.setText(serviceSpp);
-                LayoutInflater layoutInflater = LayoutInflater.from(getContext());
-                View dialogView = layoutInflater.inflate(R.layout.edit_uuid_layout, null);
-                //恢复默认serviceSPP
-                View resetButton = dialogView.findViewById(R.id.resetButton);
-                EditText uuidEditText = dialogView.findViewById(R.id.uuidEditText);
-                uuidEditText.setText(serviceSpp);
-                resetButton.setOnClickListener((View var1)->{
-                    uuidEditText.setText(BluetoothObject.SPP_UUID);
-                });
-
-
-
-                AlertDialog.Builder builder = new AlertDialog.Builder(getContext()).setView(dialogView) .setCancelable(false).setPositiveButton(getString(R.string.confirm), (dialog, which) -> {
-                    Editable text = uuidEditText.getText();
-                    try {
-                        UUID uuid = UUID.fromString(text.toString());
-                    }catch (Exception e){
-                        senHandlerMessage(0, mainActivity.getString(R.string.Wrong_format));
-                        return;
-                    }
-                    SystemInfoMapper first1 = LitePal.findFirst(SystemInfoMapper.class);
-                    if(first1==null){
-                        first1=new SystemInfoMapper();
-                    }
-                    if(text.toString().equals(first1.getServiceSpp())){
-                        senHandlerMessage(0, mainActivity.getString(R.string.Not_modify));
-                        return;
-                    }
-                    senHandlerMessage(0, mainActivity.getString(R.string.Service_restart));
-                    first1.setServiceSpp(text.toString());
-                    first1.save();
-                    viewById.setText(text.toString());
-                    enable_iconnect.setChecked(false);
-                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                        if (isAdded() && mainActivity != null && mainActivity.bluetoothService != null) {
-                            enable_iconnect.setChecked(true);
-                        }
-                    }, 1000L);
-                    senHandlerMessage(0, mainActivity.getString(R.string.success));
-
-
-                }).setNegativeButton(getString(R.string.cancel), (dialog, which) -> {
-                    dialog.dismiss();
-                });
-
-                builder.show();
-            }
-        });
-
     }
 
+    public void initClient(View inflate) {
+        clientUuidText = inflate.findViewById(R.id.currentclientIdentifierTextViewUUid);
+        clientUuidText.setText(clientUuid);
+        editClientUuid = inflate.findViewById(R.id.editClietnUUid);
+        editClientUuid.setOnClickListener(view -> requestUuidDialog(false));
+    }
 
-    public void initClient(View inflate){
-        TextView clientPort = inflate.findViewById(R.id.currentclientIdentifierTextViewUUid);
-        Button currentclientIdentifierTextViewUUid = inflate.findViewById(R.id.editClietnUUid);
-        SystemInfoMapper first = LitePal.findFirst(SystemInfoMapper.class);
-        if(first!=null &&StringUtils.isNotEmpty(first.getClientSpp())){
-            clientPort.setText(first.getClientSpp());
-        }else {
-            clientPort.setText(BluetoothObject.SPP_UUID);
-        }
-        currentclientIdentifierTextViewUUid.setOnClickListener(view -> {
-            LayoutInflater layoutInflater = LayoutInflater.from(getContext());
-            View dialogView = layoutInflater.inflate(R.layout.edit_uuid_layout, null);
-            //恢复默认serviceSPP
-            View resetButton = dialogView.findViewById(R.id.resetButton);
-            SystemInfoMapper first1 = LitePal.findFirst(SystemInfoMapper.class);
-
-            EditText uuidEditText = dialogView.findViewById(R.id.uuidEditText);
-            if(first1!=null &&StringUtils.isNotEmpty(first1.getClientSpp())){
-                uuidEditText.setText(first1.getClientSpp());
-            }else {
-                uuidEditText.setText(BluetoothObject.SPP_UUID);
+    private void loadUuidConfig(Runnable afterLoad) {
+        final int generation = viewGeneration;
+        final int request = ++uuidRequest;
+        uuidLoaded = false;
+        setUuidEditorsEnabled(false);
+        BluetoothUuidRepository.load(new BluetoothUuidRepository.Callback<BluetoothUuidRepository.Config>() {
+            @Override public void onSuccess(BluetoothUuidRepository.Config config) {
+                if (!currentUuidRequest(generation, request)) return;
+                applyUuidConfig(config);
+                setUuidEditorsEnabled(true);
+                if (afterLoad != null) afterLoad.run();
             }
-            resetButton.setOnClickListener((View var1)->{
-                uuidEditText.setText(BluetoothObject.SPP_UUID);
-            });
-            AlertDialog.Builder builder = new AlertDialog.Builder(getContext()).setView(dialogView).setCancelable(false).setPositiveButton(getString(R.string.confirm), (dialog, which) -> {
-                Editable text = uuidEditText.getText();
-                try {
-                    UUID uuid = UUID.fromString(text.toString());
-                }catch (Exception e){
-                    senHandlerMessage(0, mainActivity.getString(R.string.Wrong_format));
-                    return;
-                }
-                SystemInfoMapper first2 = LitePal.findFirst(SystemInfoMapper.class);
-                if(first2==null){
-                    first2=new SystemInfoMapper();
-                }
-                if(text.toString().equals(first2.getClientSpp())){
-                    senHandlerMessage(0, mainActivity.getString(R.string.Not_modify));
-                    return;
-                }
-                first2.setClientSpp(text.toString());
-                first2.save();
-                clientPort.setText(first2.getClientSpp());
-                senHandlerMessage(0, mainActivity.getString(R.string.success));
-
-            }).setNegativeButton(getString(R.string.cancel), (dialog, which) -> {
-                dialog.dismiss();
-            });
-            builder.show();
-
+            @Override public void onError(Throwable error) {
+                if (!currentUuidRequest(generation, request)) return;
+                setUuidEditorsEnabled(true);
+                ToastUtil.toastWord(requireContext(), getString(R.string.uuid_load_failed));
+            }
         });
+    }
 
+    private boolean currentUuidRequest(int generation, int request) {
+        return isAdded() && currentRoot != null && generation == viewGeneration && request == uuidRequest;
+    }
+
+    private void setUuidEditorsEnabled(boolean enabled) {
+        if (editServerUuid != null) editServerUuid.setEnabled(enabled);
+        if (editClientUuid != null) editClientUuid.setEnabled(enabled);
+    }
+
+    private void applyUuidConfig(BluetoothUuidRepository.Config config) {
+        serverUuid = config.getServerUuid();
+        clientUuid = config.getClientUuid();
+        uuidLoaded = true;
+        if (serverUuidText != null) serverUuidText.setText(serverUuid);
+        if (clientUuidText != null) clientUuidText.setText(clientUuid);
+    }
+
+    private void requestUuidDialog(boolean server) {
+        if (currentRoot == null || !isAdded() || (uuidDialog != null && uuidDialog.isShowing())) return;
+        if (!uuidLoaded) {
+            loadUuidConfig(() -> requestUuidDialog(server));
+            return;
+        }
+        View content = LayoutInflater.from(requireContext()).inflate(R.layout.edit_uuid_layout, null);
+        EditText input = content.findViewById(R.id.uuidEditText);
+        View reset = content.findViewById(R.id.resetButton);
+        input.setText(server ? serverUuid : clientUuid);
+        reset.setOnClickListener(view -> input.setText(BluetoothObject.SPP_UUID));
+        AlertDialog dialog = new AlertDialog.Builder(requireContext()).setView(content)
+                .setPositiveButton(R.string.confirm, null).setNegativeButton(R.string.cancel, null).create();
+        uuidDialog = dialog;
+        dialog.setOnDismissListener(ignored -> { if (uuidDialog == dialog) uuidDialog = null; });
+        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
+            final String value;
+            try { value = UUID.fromString(input.getText().toString().trim()).toString(); }
+            catch (IllegalArgumentException error) {
+                ToastUtil.toastWord(requireContext(), getString(R.string.Wrong_format));
+                return;
+            }
+            if (value.equalsIgnoreCase(server ? serverUuid : clientUuid)) {
+                ToastUtil.toastWord(requireContext(), getString(R.string.Not_modify));
+                dialog.dismiss();
+                return;
+            }
+            final int generation = viewGeneration;
+            final int request = ++uuidRequest;
+            final Context applicationContext = requireContext().getApplicationContext();
+            final BluetoothAdapter adapter = mainActivity == null
+                    ? BluetoothAdapter.getDefaultAdapter() : mainActivity.getmBluetooth();
+            dialog.setCancelable(false);
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(false);
+            input.setEnabled(false);
+            reset.setEnabled(false);
+            setUuidEditorsEnabled(false);
+            BluetoothUuidRepository.Callback<BluetoothUuidRepository.Config> callback =
+                    new BluetoothUuidRepository.Callback<BluetoothUuidRepository.Config>() {
+                @Override public void onSuccess(BluetoothUuidRepository.Config config) {
+                    Throwable restartError = null;
+                    if (server) {
+                        try { StaticObject.restartBluetoothService(applicationContext, adapter); }
+                        catch (IOException | RuntimeException error) { restartError = error; }
+                    }
+                    if (!currentUuidRequest(generation, request)) return;
+                    applyUuidConfig(config);
+                    setUuidEditorsEnabled(true);
+                    dialog.dismiss();
+                    ToastUtil.toastWord(requireContext(), getString(restartError == null
+                            ? R.string.success : R.string.bluetooth_port_error));
+                }
+                @Override public void onError(Throwable error) {
+                    if (!currentUuidRequest(generation, request)) return;
+                    dialog.setCancelable(true);
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+                    dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(true);
+                    input.setEnabled(true);
+                    reset.setEnabled(true);
+                    setUuidEditorsEnabled(true);
+                    ToastUtil.toastWord(requireContext(), getString(R.string.uuid_save_failed));
+                }
+            };
+            if (server) BluetoothUuidRepository.updateServer(value, callback);
+            else BluetoothUuidRepository.updateClient(value, callback);
+        });
+    }
+
+    @Override
+    public void onViewStateRestored(@Nullable Bundle savedInstanceState) {
+        super.onViewStateRestored(savedInstanceState);
+        syncServerSwitch();
+        serverSwitchReady = true;
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        syncServerSwitch();
+    }
+
+    private void syncServerSwitch() {
+        if (serverSwitch == null) {
+            return;
+        }
+        boolean wasReady = serverSwitchReady;
+        serverSwitchReady = false;
+        serverSwitch.setChecked(BluetoothServerSettings.isEnabled(requireContext()));
+        serverSwitchReady = wasReady;
     }
 
     private void initDiscoverable(View inflate) {
@@ -365,7 +385,21 @@ public class ServiceFragment extends BaseFragment {
 
     @Override
     public void onDestroyView() {
+        viewGeneration++;
+        uuidRequest++;
+        if (uuidDialog != null) {
+            uuidDialog.dismiss();
+            uuidDialog = null;
+        }
+        currentRoot = null;
+        serverUuidText = null;
+        clientUuidText = null;
+        editServerUuid = null;
+        editClientUuid = null;
+        mainActivity = null;
         super.onDestroyView();
+        serverSwitchReady = false;
+        serverSwitch = null;
         discoverableStatus = null;
         openDiscoverable = null;
     }

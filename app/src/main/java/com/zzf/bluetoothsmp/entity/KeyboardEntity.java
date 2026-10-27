@@ -1,10 +1,12 @@
 package com.zzf.bluetoothsmp.entity;
 
+import com.zzf.bluetoothsmp.KeyboardSlotResolver;
+
 import org.litepal.crud.LitePalSupport;
 
-public class KeyboardEntity  extends LitePalSupport {
+public class KeyboardEntity extends LitePalSupport implements KeyboardSlotResolver.Entry {
 
-    // 按钮id
+    // Stable logical slot. Legacy rows may still contain verified old R.id values.
     private  int  buttonId;
 
     private String driveAdd;
@@ -14,6 +16,11 @@ public class KeyboardEntity  extends LitePalSupport {
     private String actionDown;
     //抬起事件
     private String  actionUp;
+
+    @Override
+    public long getKeyboardRecordId() {
+        return getBaseObjId();
+    }
 
     public int getButtonId() {
         return buttonId;

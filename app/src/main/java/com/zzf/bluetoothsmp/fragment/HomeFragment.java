@@ -32,7 +32,7 @@ import com.zzf.bluetoothsmp.BluetoothConnectionState;
 import com.zzf.bluetoothsmp.BluetoothObject;
 import com.zzf.bluetoothsmp.BluetoothPermissionUtils;
 import com.zzf.bluetoothsmp.BluetoothServiceConnect;
-import com.zzf.bluetoothsmp.BluetoothServiceConnect;
+import com.zzf.bluetoothsmp.BluetoothTelemetry;
 import com.zzf.bluetoothsmp.BluetoothDeviceProfileStore;
 import com.zzf.bluetoothsmp.Fruit;
 import com.zzf.bluetoothsmp.MainActivity;
@@ -51,6 +51,8 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
+import java.util.HashMap;
+import java.util.Map;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -62,6 +64,11 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 public class HomeFragment extends BaseFragment {
+
+    @Override
+    protected String getAnalyticsScreenName() {
+        return "home";
+    }
 
     private final String TAG = "HomeFragment";
     private static final int REQUEST_ENABLE_BLUETOOTH = 0x33;
@@ -93,6 +100,12 @@ public class HomeFragment extends BaseFragment {
     private boolean scanModeReceiverRegistered;
     private boolean discoveryStateReceiverRegistered;
     private Fruit pendingConnectFruit;
+    private int viewGeneration;
+    private int profileLoadRequest;
+    private long profileWriteSequence;
+    private final Map<String, Long> profileRequests = new HashMap<>();
+    private AlertDialog aliasDialog;
+    private boolean aliasLoading;
 
     private final BroadcastReceiver discoveryStateReceiver = new BroadcastReceiver() {
         @Override
@@ -127,6 +140,7 @@ public class HomeFragment extends BaseFragment {
             StaticObject.connectionAttemptRegistry.updateHandlers(mainActivity.mHandler);
         }
         binding = FragmentHomeBinding.inflate(inflater, container, false);
+        viewGeneration++;
         View root = binding.getRoot();
 
 
@@ -147,7 +161,15 @@ public class HomeFragment extends BaseFragment {
             public boolean onMenuItemClick(MenuItem item) {
                 int itemId = item.getItemId();
                 String url = "";
-                if (itemId == R.id.home_discoverable) {
+                if (itemId == R.id.home_plugins) {
+                    finishScan(true);
+                    startActivity(new Intent(requireContext(), com.zzf.bluetoothsmp.plugin.PluginCenterActivity.class));
+                    return true;
+                } else if (itemId == R.id.home_ble) {
+                    finishScan(true);
+                    startActivity(new Intent(requireContext(), com.zzf.bluetoothsmp.ble.BleActivity.class));
+                    return true;
+                } else if (itemId == R.id.home_discoverable) {
                     requestDiscoverable();
                     return true;
                 } else if (itemId == R.id.support_developer) {
@@ -165,7 +187,7 @@ public class HomeFragment extends BaseFragment {
                         item.setIcon(R.drawable.ic_en);
 
                     }else if("en".equals(language)){
-                        mainActivity.toSetLanguage(0);
+                        mainActivity.toSetLanguage(2);
                         item.setIcon(R.drawable.ic_zh);
 
                     }
@@ -225,6 +247,7 @@ public class HomeFragment extends BaseFragment {
                 }
                 String address = BluetoothAddressUtils.normalize(fruit.getAddress());
                 BluetoothConnectionState state = StaticObject.connectionRegistry.get(address);
+                BluetoothTelemetry.logDeviceSelected(state);
                 if (state == BluetoothConnectionState.CONNECTING
                         || state == BluetoothConnectionState.PAIRING
                         || state == BluetoothConnectionState.RECONNECTING) {
@@ -258,11 +281,24 @@ public class HomeFragment extends BaseFragment {
         });
         adapter.setOnFavoriteClickListener(fruit -> {
             String address = BluetoothAddressUtils.normalize(fruit.getAddress());
+            if (address == null || profileRequests.containsKey(address)) return;
             boolean favorite = !fruit.isFavorite();
-            BluetoothDeviceProfileStore.setFavorite(address, favorite, System.currentTimeMillis());
-            fruit.setFavorite(favorite);
-            sortFruitList();
-            adapter.notifyDataSetChanged();
+            final int generation = viewGeneration;
+            final long request = ++profileWriteSequence;
+            profileRequests.put(address, request);
+            BluetoothDeviceProfileStore.setFavoriteAsync(address, favorite, System.currentTimeMillis(),
+                    new BluetoothDeviceProfileStore.Callback<BluetoothDeviceProfileEntity>() {
+                        @Override public void onSuccess(BluetoothDeviceProfileEntity saved) {
+                            if (!currentProfileRequest(generation, address, request)) return;
+                            profileRequests.remove(address);
+                            updateDisplayedProfile(saved);
+                        }
+                        @Override public void onError(Throwable error) {
+                            if (!currentProfileRequest(generation, address, request)) return;
+                            profileRequests.remove(address);
+                            ToastUtil.toastWord(requireContext(), getString(R.string.device_profile_save_failed));
+                        }
+                    });
         });
         adapter.setOnLongClickListener(fruit -> {
             showAliasDialog(fruit);
@@ -549,8 +585,39 @@ public class HomeFragment extends BaseFragment {
                 != PackageManager.PERMISSION_GRANTED) {
             return;
         }
-        for (BluetoothDeviceProfileEntity profile : BluetoothDeviceProfileStore.findAll()) {
+        final int generation = viewGeneration;
+        final int request = ++profileLoadRequest;
+        mergeSavedProfiles(BluetoothDeviceProfileStore.findAllCached());
+        BluetoothDeviceProfileStore.loadAsync(new BluetoothDeviceProfileStore.Callback<List<BluetoothDeviceProfileEntity>>() {
+            @Override public void onSuccess(List<BluetoothDeviceProfileEntity> profiles) {
+                if (binding == null || !isAdded() || generation != viewGeneration || request != profileLoadRequest) return;
+                mergeSavedProfiles(profiles);
+            }
+            @Override public void onError(Throwable error) {
+                if (binding == null || !isAdded() || generation != viewGeneration || request != profileLoadRequest) return;
+                ToastUtil.toastWord(requireContext(), getString(R.string.device_profile_load_failed));
+            }
+        });
+    }
+
+    @SuppressLint("MissingPermission")
+    private void mergeSavedProfiles(List<BluetoothDeviceProfileEntity> profiles) {
+        if (binding == null || mainActivity == null || mainActivity.getmBluetooth() == null
+                || !BluetoothPermissionUtils.hasConnectPermission(requireContext())) return;
+        for (BluetoothDeviceProfileEntity profile : profiles) {
             try {
+                BluetoothDeviceProfileEntity current = BluetoothDeviceProfileStore.findCached(profile.getAddress());
+                if (current != null) profile = current;
+                int existing = findFruitIndex(profile.getAddress());
+                if (existing >= 0) {
+                    Fruit discovered = fruitList.get(existing);
+                    discovered.setAlias(profile.getAlias());
+                    discovered.setFavorite(profile.isFavorite());
+                    discovered.setLastConnectedAt(profile.getLastConnectedAt());
+                    if ((discovered.getName() == null || discovered.getAddress().equals(discovered.getName()))
+                            && profile.getDeviceName() != null) discovered.setName(profile.getDeviceName());
+                    continue;
+                }
                 BluetoothDevice device = mainActivity.getmBluetooth()
                         .getRemoteDevice(profile.getAddress());
                 Fruit fruit = new Fruit(requireContext());
@@ -563,13 +630,8 @@ public class HomeFragment extends BaseFragment {
                 fruit.setFavorite(profile.isFavorite());
                 fruit.setLastConnectedAt(profile.getLastConnectedAt());
                 fruit.setConnectionState(StaticObject.connectionRegistry.get(profile.getAddress()));
-                int existing = findFruitIndex(profile.getAddress());
-                if (existing < 0) {
-                    fruitList.add(fruit);
-                } else {
-                    fruitList.set(existing, fruit);
-                }
-            } catch (IllegalArgumentException ignored) {
+                fruitList.add(fruit);
+            } catch (IllegalArgumentException | SecurityException ignored) {
                 // Keep stale profile data for a later discovery pass.
             }
         }
@@ -580,7 +642,7 @@ public class HomeFragment extends BaseFragment {
     }
 
     private void applyProfile(Fruit fruit) {
-        BluetoothDeviceProfileEntity profile = BluetoothDeviceProfileStore.find(fruit.getAddress());
+        BluetoothDeviceProfileEntity profile = BluetoothDeviceProfileStore.findCached(fruit.getAddress());
         if (profile == null) {
             return;
         }
@@ -590,41 +652,102 @@ public class HomeFragment extends BaseFragment {
     }
 
     private void showAliasDialog(Fruit fruit) {
-        if (!isAdded() || fruit == null) {
+        if (!isAdded() || binding == null || fruit == null || aliasLoading
+                || (aliasDialog != null && aliasDialog.isShowing())) {
             return;
         }
+        final String address = BluetoothAddressUtils.normalize(fruit.getAddress());
+        if (address == null || profileRequests.containsKey(address)) return;
+        if (!BluetoothDeviceProfileStore.isCacheLoaded()) {
+            aliasLoading = true;
+            final int generation = viewGeneration;
+            BluetoothDeviceProfileStore.loadAsync(new BluetoothDeviceProfileStore.Callback<List<BluetoothDeviceProfileEntity>>() {
+                @Override public void onSuccess(List<BluetoothDeviceProfileEntity> profiles) {
+                    if (binding == null || generation != viewGeneration || !isAdded()) return;
+                    aliasLoading = false;
+                    int index = findFruitIndex(address);
+                    if (index >= 0) showAliasDialog(fruitList.get(index));
+                }
+                @Override public void onError(Throwable error) {
+                    if (binding == null || generation != viewGeneration || !isAdded()) return;
+                    aliasLoading = false;
+                    ToastUtil.toastWord(requireContext(), getString(R.string.device_profile_load_failed));
+                }
+            });
+            return;
+        }
+        BluetoothDeviceProfileEntity cached = BluetoothDeviceProfileStore.findCached(address);
         EditText input = new EditText(requireContext());
         input.setHint(R.string.device_alias);
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
-        input.setText(fruit.getAlias());
+        input.setText(cached == null ? fruit.getAlias() : cached.getAlias());
         input.setSelection(input.length());
         SwitchMaterial autoReconnect = new SwitchMaterial(requireContext());
         autoReconnect.setText(R.string.device_auto_reconnect);
         autoReconnect.setChecked(StaticObject.reconnectManager
-                .isDeviceReconnectEnabled(fruit.getAddress()));
+                .isDeviceReconnectEnabled(address));
         LinearLayout content = new LinearLayout(requireContext());
         content.setOrientation(LinearLayout.VERTICAL);
         int padding = (int) (16 * getResources().getDisplayMetrics().density);
         content.setPadding(padding, 0, padding, 0);
         content.addView(input);
         content.addView(autoReconnect);
-        new AlertDialog.Builder(requireContext())
+        AlertDialog dialog = new AlertDialog.Builder(requireContext())
                 .setTitle(R.string.device_alias)
                 .setView(content)
                 .setNegativeButton(R.string.cancel, null)
-                .setPositiveButton(R.string.save, (dialog, which) -> {
-                    String alias = input.getText() == null ? "" : input.getText().toString();
-                    BluetoothDeviceProfileStore.updateAlias(
-                            fruit.getAddress(), alias, System.currentTimeMillis());
-                    StaticObject.reconnectManager.setDeviceReconnectEnabled(
-                            fruit.getAddress(), autoReconnect.isChecked());
-                    fruit.setAlias(alias);
-                    sortFruitList();
-                    if (adapter != null) {
-                        adapter.notifyDataSetChanged();
-                    }
-                })
-                .show();
+                .setPositiveButton(R.string.save, null).create();
+        aliasDialog = dialog;
+        dialog.setOnDismissListener(ignored -> {
+            if (aliasDialog == dialog) aliasDialog = null;
+        });
+        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
+            if (profileRequests.containsKey(address)) return;
+            final String alias = input.getText() == null ? "" : input.getText().toString();
+            final boolean reconnect = autoReconnect.isChecked();
+            final int generation = viewGeneration;
+            final long request = ++profileWriteSequence;
+            profileRequests.put(address, request);
+            dialog.setCancelable(false);
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(false);
+            input.setEnabled(false);
+            autoReconnect.setEnabled(false);
+            BluetoothDeviceProfileStore.updateAliasAsync(address, alias, System.currentTimeMillis(),
+                    new BluetoothDeviceProfileStore.Callback<BluetoothDeviceProfileEntity>() {
+                        @Override public void onSuccess(BluetoothDeviceProfileEntity saved) {
+                            StaticObject.reconnectManager.setDeviceReconnectEnabled(address, reconnect);
+                            if (!currentProfileRequest(generation, address, request)) return;
+                            profileRequests.remove(address);
+                            updateDisplayedProfile(saved);
+                            dialog.dismiss();
+                        }
+                        @Override public void onError(Throwable error) {
+                            if (!currentProfileRequest(generation, address, request)) return;
+                            profileRequests.remove(address);
+                            dialog.setCancelable(true);
+                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+                            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(true);
+                            input.setEnabled(true);
+                            autoReconnect.setEnabled(true);
+                            ToastUtil.toastWord(requireContext(), getString(R.string.device_profile_save_failed));
+                        }
+                    });
+        });
+    }
+
+    private boolean currentProfileRequest(int generation, String address, long request) {
+        Long current = profileRequests.get(address);
+        return binding != null && isAdded() && generation == viewGeneration
+                && current != null && current == request;
+    }
+
+    private void updateDisplayedProfile(BluetoothDeviceProfileEntity saved) {
+        int index = findFruitIndex(saved.getAddress());
+        if (index >= 0) applyProfile(fruitList.get(index));
+        sortFruitList();
+        if (adapter != null) adapter.notifyDataSetChanged();
     }
 
     private void openConnectedSession(Fruit fruit) {
@@ -632,6 +755,10 @@ public class HomeFragment extends BaseFragment {
         drive.setDriveName(fruit.getDisplayName());
         drive.setDriveAdd(fruit.getAddress());
         BluetoothServiceConnect connection = StaticObject.bluetoothSocketMap.get(fruit.getAddress());
+        if (connection != null && connection.isPluginOwned()) {
+            android.widget.Toast.makeText(requireContext(), R.string.plugin_device_busy, android.widget.Toast.LENGTH_SHORT).show();
+            return;
+        }
         drive.setUuid(connection == null || connection.getSendUuid() == null
                 ? BluetoothObject.SPP_UUID : connection.getSendUuid());
         Intent intent = new Intent(requireContext(), Liantian_new.class);
@@ -709,6 +836,14 @@ public class HomeFragment extends BaseFragment {
 
     @Override
     public void onDestroyView() {
+        viewGeneration++;
+        profileLoadRequest++;
+        profileRequests.clear();
+        aliasLoading = false;
+        if (aliasDialog != null) {
+            aliasDialog.dismiss();
+            aliasDialog = null;
+        }
         scanHandler.removeCallbacks(scanTimeout);
         scanHandler.removeCallbacks(connectionStateRefresh);
         if (mainActivity != null) {
@@ -717,5 +852,8 @@ public class HomeFragment extends BaseFragment {
         super.onDestroyView();
         discoverableMenuItem = null;
         binding = null;
+        adapter = null;
+        mRecyclerView = null;
+        swipeRefresh = null;
     }
 }

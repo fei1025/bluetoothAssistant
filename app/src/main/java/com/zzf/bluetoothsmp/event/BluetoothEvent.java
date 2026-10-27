@@ -12,6 +12,14 @@ public class BluetoothEvent extends EventDispatcher {
         dispatchEvent(BluetoothType.RECEIVE, msg);
     }
 
+    public void sendStatus(Msg msg) {
+        dispatchEvent(BluetoothType.SEND_STATUS, msg);
+    }
+
+    public void historyChanged() {
+        dispatchEvent(BluetoothType.HISTORY_CHANGED);
+    }
+
     public void notConnect(Msg msg) {
         dispatchEvent(BluetoothType.NOT_CONNECT, msg);
     }

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/ble_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical">
+    <androidx.appcompat.widget.Toolbar android:id="@+id/ble_toolbar"
+        android:layout_width="match_parent" android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorPrimary" android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+        app:title="@string/ble_title" />
+    <TextView android:id="@+id/ble_status" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:padding="12dp" android:textIsSelectable="true" android:accessibilityLiveRegion="polite" />
+    <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content" android:fillViewport="true">
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
+            <Button android:id="@+id/ble_connection" style="?android:attr/buttonBarButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ble_reconnect" />
+            <Button android:id="@+id/ble_rssi" style="?android:attr/buttonBarButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ble_label_rssi" />
+            <Button android:id="@+id/ble_mtu" style="?android:attr/buttonBarButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ble_label_mtu" />
+            <Button android:id="@+id/ble_uart" style="?android:attr/buttonBarButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ble_label_uart" />
+            <Button android:id="@+id/ble_pair" style="?android:attr/buttonBarButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ble_pair" />
+            <Button android:id="@+id/ble_priority" style="?android:attr/buttonBarButtonStyle" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ble_priority" />
+        </LinearLayout>
+    </HorizontalScrollView>
+    <com.google.android.material.tabs.TabLayout android:id="@+id/ble_tabs" android:layout_width="match_parent"
+        android:layout_height="wrap_content" app:tabMode="fixed" />
+    <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+        <LinearLayout android:id="@+id/ble_scan_panel" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:paddingStart="12dp" android:paddingEnd="12dp">
+            <EditText android:id="@+id/ble_filter" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:hint="@string/ble_filter_hint" android:inputType="text" android:maxLength="100" android:singleLine="true" android:importantForAutofill="no" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <EditText android:id="@+id/ble_min_rssi" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                    android:hint="@string/ble_min_rssi" android:inputType="numberSigned" android:maxLength="4" android:importantForAutofill="no" />
+                <Button android:id="@+id/ble_scan" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ble_scan" />
+            </LinearLayout>
+            <TextView android:id="@+id/ble_scan_hint" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ble_scan_hint" android:paddingTop="6dp" android:paddingBottom="6dp" />
+            <androidx.recyclerview.widget.RecyclerView android:id="@+id/ble_devices" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" />
+        </LinearLayout>
+        <LinearLayout android:id="@+id/ble_services_panel" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:paddingStart="12dp" android:paddingEnd="12dp" android:visibility="gone">
+            <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="@string/ble_services_hint" android:paddingTop="8dp" android:paddingBottom="8dp" />
+            <androidx.recyclerview.widget.RecyclerView android:id="@+id/ble_services" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" />
+        </LinearLayout>
+        <androidx.core.widget.NestedScrollView android:id="@+id/ble_terminal_panel" android:layout_width="match_parent" android:layout_height="match_parent" android:fillViewport="true" android:visibility="gone">
+          <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingStart="12dp" android:paddingEnd="12dp">
+            <TextView android:id="@+id/ble_tx_target" android:layout_width="match_parent" android:layout_height="wrap_content" android:paddingTop="6dp" android:paddingBottom="6dp" android:textIsSelectable="true" android:maxLines="3" android:ellipsize="middle" />
+            <EditText android:id="@+id/ble_payload" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="@string/ble_payload"
+                android:inputType="textMultiLine|textNoSuggestions" android:maxLines="3" android:maxLength="196608" android:importantForAutofill="no" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <Spinner android:id="@+id/ble_encoding" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:contentDescription="@string/ble_encoding" />
+                <Spinner android:id="@+id/ble_suffix" android:layout_width="0dp" android:layout_weight="1" android:layout_height="48dp" android:contentDescription="@string/ble_suffix" />
+            </LinearLayout>
+            <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content">
+                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
+                    <CheckBox android:id="@+id/ble_no_response" android:layout_width="wrap_content" android:layout_height="48dp" android:text="@string/ble_no_response" />
+                    <CheckBox android:id="@+id/ble_split" android:layout_width="wrap_content" android:layout_height="48dp" android:text="@string/ble_split" />
+                </LinearLayout>
+            </HorizontalScrollView>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <EditText android:id="@+id/ble_interval" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content"
+                    android:hint="@string/ble_interval" android:inputType="number" android:maxLength="5" android:importantForAutofill="no" />
+                <Button android:id="@+id/ble_send" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ble_send" />
+                <Button android:id="@+id/ble_repeat" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ble_repeat" />
+            </LinearLayout>
+            <HorizontalScrollView android:layout_width="match_parent" android:layout_height="wrap_content">
+                <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
+                    <CheckBox android:id="@+id/ble_hex_log" android:layout_width="wrap_content" android:layout_height="48dp" android:text="@string/ble_label_hex" android:checked="true" />
+                    <CheckBox android:id="@+id/ble_pause_log" android:layout_width="wrap_content" android:layout_height="48dp" android:text="@string/ble_pause" />
+                    <Button android:id="@+id/ble_clear" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ble_clear" />
+                    <Button android:id="@+id/ble_export" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/ble_export" />
+                </LinearLayout>
+            </HorizontalScrollView>
+            <androidx.recyclerview.widget.RecyclerView android:id="@+id/ble_logs" android:layout_width="match_parent" android:layout_height="320dp" android:nestedScrollingEnabled="false" />
+          </LinearLayout>
+        </androidx.core.widget.NestedScrollView>
+    </FrameLayout>
+</LinearLayout>

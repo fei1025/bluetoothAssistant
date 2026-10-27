@@ -1,0 +1,105 @@
+name: Publish reviewed plugins
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Immutable plugin release tag (plugins-v1, plugins-v2, ...)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-publishing
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify plugin tool and bundled code
+        run: python -B -m unittest discover -s scripts/tests -p test_plugin_tool.py
+      - name: Prepare catalogue signing key outside checkout
+        env:
+          REVIEW_PRIVATE_KEY: ${{ secrets.PLUGIN_REVIEW_KEY_PKCS8 }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          python - <<'PY'
+          import os,base64,json,re
+          from pathlib import Path
+          if not re.fullmatch(r'plugins-[A-Za-z0-9_.-]+',os.environ['RELEASE_TAG']):
+              raise SystemExit('Invalid release tag')
+          value=os.environ.get('REVIEW_PRIVATE_KEY','')
+          if not value:
+              raise SystemExit('Configure PLUGIN_REVIEW_KEY_PKCS8 before publishing')
+          key=Path(os.environ['RUNNER_TEMP'])/'plugin-review.pk8'
+          descriptor=os.open(key,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)
+          with os.fdopen(descriptor,'wb') as stream: stream.write(base64.b64decode(value,validate=True))
+          public=json.loads(Path('app/src/main/assets/plugins/review-keys.json').read_text())[0]
+          Path(str(key)+'.pub').write_text(public)
+          PY
+      - name: Prepare signed static catalogue and immutable assets
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          python -B scripts/build_plugin_catalog.py --repository "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --review-key "$RUNNER_TEMP/plugin-review.pk8" --output plugin-publish-output
+      - name: Publish new release without replacing existing assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo 'Release already exists; increment plugin versions, catalogue revision and release tag.'
+            exit 1
+          fi
+          shopt -s nullglob
+          assets=(plugin-publish-output/release/*.btplugin)
+          gh release create "$RELEASE_TAG" "${assets[@]}" --title "$RELEASE_TAG" --notes 'Reviewed Bluetooth Assistant plugins. Install through the app.'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-static-site
+          path: plugin-publish-output/site
+      - name: Remove temporary signing material
+        if: always()
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          for suffix in ('','.pub'):
+              (Path(os.environ['RUNNER_TEMP'])/('plugin-review.pk8'+suffix)).unlink(missing_ok=True)
+          PY
+  pages:
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: plugin-static-site
+          path: site
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - uses: actions/deploy-pages@v4
+        id: deploy

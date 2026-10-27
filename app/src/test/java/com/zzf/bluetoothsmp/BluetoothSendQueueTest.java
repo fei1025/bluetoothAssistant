@@ -3,6 +3,7 @@ package com.zzf.bluetoothsmp;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertFalse;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -12,10 +13,125 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.junit.Test;
 
 public class BluetoothSendQueueTest {
+
+    @Test
+    public void slowQueuedObserverDoesNotHoldTheCancellationLock() throws Exception {
+        CountDownLatch observerEntered = new CountDownLatch(1), observerRelease = new CountDownLatch(1);
+        AtomicLong request = new AtomicLong();
+        AtomicInteger writes = new AtomicInteger();
+        BluetoothSendQueue queue = new BluetoothSendQueue(payload -> writes.incrementAndGet(),
+                (id, status, pending, error) -> {
+                    if (status == BluetoothSendStatus.QUEUED) {
+                        request.set(id);
+                        observerEntered.countDown();
+                        try { observerRelease.await(2, TimeUnit.SECONDS); }
+                        catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+                    }
+                });
+        Thread producer = new Thread(() -> queue.enqueue(new byte[]{1}));
+        Thread stopper = new Thread(() -> queue.cancel(request.get()));
+        try {
+            producer.start();
+            assertTrue(observerEntered.await(1, TimeUnit.SECONDS));
+            stopper.start();
+            stopper.join(500);
+            assertFalse("Stop cannot wait for a disk observer", stopper.isAlive());
+            assertEquals(0L, queue.getPendingBytes());
+            assertEquals(0, writes.get());
+        } finally {
+            observerRelease.countDown();
+            producer.join(1000);
+            stopper.join(1000);
+            queue.close();
+        }
+    }
+
+    @Test
+    public void rejectsCountAndByteOverloadWithoutWritingRejectedRequests() throws Exception {
+        CountDownLatch started = new CountDownLatch(1), release = new CountDownLatch(1);
+        AtomicInteger writes = new AtomicInteger(), rejections = new AtomicInteger();
+        BluetoothSendQueue queue = new BluetoothSendQueue(payload -> {
+            writes.incrementAndGet();
+            started.countDown();
+            try { release.await(2, TimeUnit.SECONDS); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+        }, (id, status, pending, error) -> {
+            if (status == BluetoothSendStatus.FAILED && error instanceof BluetoothQueueFullException) rejections.incrementAndGet();
+        }, 2, 4);
+        try {
+            queue.enqueue(new byte[]{1, 2, 3, 4});
+            assertTrue(started.await(1, TimeUnit.SECONDS));
+            queue.enqueue(new byte[]{5});
+            assertEquals(1, rejections.get());
+            assertEquals(4L, queue.getPendingBytes());
+            assertFalse(queue.isClosed());
+            assertEquals(1, writes.get());
+        } finally { release.countDown(); queue.close(); }
+
+        CountDownLatch countStarted = new CountDownLatch(1), countRelease = new CountDownLatch(1);
+        BluetoothSendQueue countQueue = new BluetoothSendQueue(payload -> {
+            countStarted.countDown();
+            try { countRelease.await(2, TimeUnit.SECONDS); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+        }, (id, status, pending, error) -> {
+            if (status == BluetoothSendStatus.FAILED && error instanceof BluetoothQueueFullException) rejections.incrementAndGet();
+        }, 1, 100);
+        try {
+            countQueue.enqueue(new byte[]{1});
+            assertTrue(countStarted.await(1, TimeUnit.SECONDS));
+            countQueue.enqueue(new byte[]{2});
+            assertEquals(2, rejections.get());
+        } finally { countRelease.countDown(); countQueue.close(); }
+    }
+
+    @Test
+    public void cancelingQueuedRequestReleasesItsByteReservation() throws Exception {
+        CountDownLatch started = new CountDownLatch(1), release = new CountDownLatch(1);
+        BluetoothSendQueue queue = new BluetoothSendQueue(payload -> {
+            started.countDown();
+            try { release.await(2, TimeUnit.SECONDS); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+        }, null, 3, 8);
+        try {
+            queue.enqueue(new byte[4]);
+            assertTrue(started.await(1, TimeUnit.SECONDS));
+            long queued = queue.enqueue(new byte[4]);
+            assertEquals(8L, queue.getPendingBytes());
+            assertTrue(queue.cancel(queued));
+            assertEquals(4L, queue.getPendingBytes());
+            queue.enqueue(new byte[4]);
+            assertEquals(8L, queue.getPendingBytes());
+        } finally { release.countDown(); queue.close(); }
+    }
+
+    @Test
+    public void canceledBlockedWriteRetainsBudgetUntilWriterActuallyReturns() throws Exception {
+        CountDownLatch started = new CountDownLatch(1), release = new CountDownLatch(1);
+        AtomicInteger rejected = new AtomicInteger();
+        BluetoothSendQueue queue = new BluetoothSendQueue(payload -> {
+            started.countDown();
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
+            while (release.getCount() > 0 && System.nanoTime() < deadline) {
+                try { release.await(20, TimeUnit.MILLISECONDS); }
+                catch (InterruptedException ignored) { /* Simulates a socket write that ignores interrupt. */ }
+            }
+        }, (id, status, pending, error) -> {
+            if (error instanceof BluetoothQueueFullException) rejected.incrementAndGet();
+        }, 2, 4);
+        try {
+            long active = queue.enqueue(new byte[4]);
+            assertTrue(started.await(1, TimeUnit.SECONDS));
+            assertTrue(queue.cancel(active));
+            assertEquals(4L, queue.getPendingBytes());
+            queue.enqueue(new byte[4]);
+            assertEquals(1, rejected.get());
+        } finally { release.countDown(); queue.close(); }
+    }
 
     @Test
     public void writesInOrderAndReportsSuccessfulLifecycle() throws Exception {

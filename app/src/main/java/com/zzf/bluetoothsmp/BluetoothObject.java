@@ -18,11 +18,10 @@ import android.os.Message;
 
 import com.zzf.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.entity.BluetoothDrive;
-import com.zzf.bluetoothsmp.entity.SystemInfoMapper;
 import com.zzf.bluetoothsmp.event.EventDispatcher;
 import com.zzf.bluetoothsmp.liaoTian.Liantian_new;
 import com.zzf.bluetoothsmp.loading.WeiboDialogUtils;
-import com.zzf.bluetoothsmp.utils.StringUtils;
+import com.zzf.bluetoothsmp.utils.BluetoothUuidRepository;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
 
 import java.io.BufferedInputStream;
@@ -30,6 +29,9 @@ import java.io.BufferedOutputStream;
 import java.util.UUID;
 import java.lang.ref.WeakReference;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -38,11 +40,16 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import static com.zzf.bluetoothsmp.R.string.bluetoothConnection;
 
-import org.litepal.LitePal;
 
 public class BluetoothObject extends EventDispatcher {
     static final String TAG = "BluetoothObject";
     public static final String SPP_UUID = "00001101-0000-1000-8000-00805F9B34FB";
+    private static final ScheduledThreadPoolExecutor CONNECT_TIMEOUTS = new ScheduledThreadPoolExecutor(1, runnable -> {
+        Thread worker = new Thread(runnable, "bt-connect-timeouts");
+        worker.setDaemon(true);
+        return worker;
+    });
+    static { CONNECT_TIMEOUTS.setRemoveOnCancelPolicy(true); }
 
     private BluetoothDevice bluetoothDevice;
     private BufferedOutputStream bufferedOutputStream;
@@ -56,8 +63,7 @@ public class BluetoothObject extends EventDispatcher {
     private volatile boolean connectStart = false;
     private volatile boolean shouldStop = false; // 用于安全停止线程的标志
     private Thread connectFlag;
-    private Thread checkConnect;
-    private Thread waitingThread;
+    private volatile ScheduledFuture<?> connectionTimeoutTask;
     private final AtomicBoolean sessionStarted = new AtomicBoolean(false);
     private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
     private final BluetoothConnectionFailureGate failureGate =
@@ -70,6 +76,8 @@ public class BluetoothObject extends EventDispatcher {
     private int reconnectAttempt;
     private BluetoothServiceConnect activeSession;
     private long connectStartedAtMillis;
+    private long foregroundGeneration;
+    private volatile boolean userCanceled;
 
     public Context getLanLaContex() {
         return lanLaContex;
@@ -112,13 +120,25 @@ public class BluetoothObject extends EventDispatcher {
         failureGate.reset();
         connectStart = false;
         sessionStarted.set(false);
-        boolean ownsConnectionSlot = reconnect
-                ? StaticObject.connectionRegistry.get(bluetoothDevice == null ? null : bluetoothDevice.getAddress())
-                == BluetoothConnectionState.CONNECTING
-                : bluetoothDevice != null
-                && StaticObject.connectionRegistry.beginConnect(bluetoothDevice.getAddress());
-        if (bluetoothDevice == null || !ownsConnectionSlot) {
-            senHandlerMessage(0, contex.getString(R.string.bluetooth_connection_in_progress));
+        shouldStop = false;
+        userCanceled = false;
+        foregroundGeneration = StaticObject.foregroundGate.currentGeneration();
+        final boolean[] ownsConnectionSlot = {false};
+        StaticObject.foregroundGate.runIfCurrent(foregroundGeneration, () -> {
+            ownsConnectionSlot[0] = bluetoothDevice != null
+                    && !BluetoothSessionOwners.heldByOther("classic", bluetoothDevice.getAddress(), this) && (reconnect
+                    ? StaticObject.connectionRegistry.get(bluetoothDevice.getAddress())
+                        == BluetoothConnectionState.CONNECTING
+                    : StaticObject.connectionRegistry.beginConnect(bluetoothDevice.getAddress()));
+            if (ownsConnectionSlot[0]) {
+                StaticObject.connectionAttemptRegistry.register(bluetoothDevice.getAddress(), this);
+            }
+        });
+        if (!ownsConnectionSlot[0]) {
+            return;
+        }
+        if (!isCurrentForegroundAttempt()) {
+            cancelConnectForLifecycle();
             return;
         }
         boolean bonded = false;
@@ -129,8 +149,6 @@ public class BluetoothObject extends EventDispatcher {
         }
         BluetoothTelemetry.logConnectAttempt("spp_client", bonded, requestedUuid,
                 reconnect, reconnectAttempt);
-        StaticObject.connectionAttemptRegistry.register(bluetoothDevice.getAddress(), this);
-        shouldStop = false; // 重置停止标志
         if (mcontex instanceof Activity) {
             loadingDialog = WeiboDialogUtils.createLoadingDialog(mcontex, contex.getString(bluetoothConnection));
         }
@@ -147,12 +165,13 @@ public class BluetoothObject extends EventDispatcher {
     }
 
     private void startConnectionThreads() {
+        if (!isCurrentForegroundAttempt()) {
+            cancelConnectForLifecycle();
+            return;
+        }
         connectFlag = new Thread(this::connectSocket, "bt-connect");
-        checkConnect = new Thread(this::waitForConnection, "bt-connect-monitor");
-        waitingThread = new Thread(this::connectionTimeout, "bt-connect-timeout");
+        connectionTimeoutTask = CONNECT_TIMEOUTS.schedule(this::connectionTimeout, 15L, TimeUnit.SECONDS);
         connectFlag.start();
-        checkConnect.start();
-        waitingThread.start();
 
     }
 
@@ -228,12 +247,7 @@ public class BluetoothObject extends EventDispatcher {
         if (connectFlag != null && connectFlag.isAlive()) {
             connectFlag.interrupt();
         }
-        if (checkConnect != null && checkConnect.isAlive()) {
-            checkConnect.interrupt();
-        }
-        if (waitingThread != null && waitingThread.isAlive()) {
-            waitingThread.interrupt();
-        }
+        cancelConnectionTimeout();
         if (insecureRfcommSocketToServiceRecord != null && !connectStart) {
             try {
                 insecureRfcommSocketToServiceRecord.close();
@@ -244,7 +258,6 @@ public class BluetoothObject extends EventDispatcher {
 
     private void connectionTimeout() {
             try {
-                Thread.sleep(1000L * 15);
                 if (!connectStart && !cancelRequested.get()) {
                     WeiboDialogUtils.closeDialog(loadingDialog);
                     stopThreads();
@@ -252,11 +265,15 @@ public class BluetoothObject extends EventDispatcher {
                     failConnection(BluetoothConnectionErrorCode.CONNECTION_TIMEOUT, R.string.connection_timeout);
 
                 }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
             } catch (Exception e) {
                 Log.e(TAG, "Connection timeout monitor failed", e);
             }
+    }
+
+    private void cancelConnectionTimeout() {
+        ScheduledFuture<?> task = connectionTimeoutTask;
+        connectionTimeoutTask = null;
+        if (task != null) task.cancel(false);
     }
 
 
@@ -273,23 +290,12 @@ public class BluetoothObject extends EventDispatcher {
     }
 
 
-    private void waitForConnection() {
-            while (!shouldStop && !Thread.currentThread().isInterrupted()) {
-                if (connectStart) {
-                    WeiboDialogUtils.closeDialog(loadingDialog);
-                    return;
-                }
-                try {
-                    Thread.sleep(100); // 避免 CPU 空转
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
-            }
-    }
-
     @SuppressLint("MissingPermission")
     private void connectSocket() {
+            if (!isCurrentForegroundAttempt()) {
+                cancelConnectionTimeout();
+                return;
+            }
             String connectionUuid = SPP_UUID;
             try {
                 BluetoothManager manager = (BluetoothManager) mcontex.getSystemService(Context.BLUETOOTH_SERVICE);
@@ -306,30 +312,27 @@ public class BluetoothObject extends EventDispatcher {
                     adapter.cancelDiscovery();
                 }
                 // 检查是否应该停止
-                if (shouldStop || cancelRequested.get() || Thread.currentThread().isInterrupted()) {
+                if (!isCurrentForegroundAttempt() || Thread.currentThread().isInterrupted()) {
                     return;
                 }
-                
+
                 //BluetoothBle bluetoothBle = new BluetoothBle(bluetoothDevice);
                 if (requestedUuid == null) {
-                    SystemInfoMapper first = LitePal.findFirst(SystemInfoMapper.class);
-                    if (first != null && StringUtils.isNotEmpty(first.getClientSpp())) {
-                        requestedUuid = first.getClientSpp();
-                    }
+                    requestedUuid = BluetoothUuidRepository.loadForTransport().getClientUuid();
                 }
                 UUID uuid = UUID.fromString(requestedUuid == null ? SPP_UUID : requestedUuid);
                 connectionUuid = requestedUuid == null ? SPP_UUID : requestedUuid;
                 insecureRfcommSocketToServiceRecord = bluetoothDevice.createInsecureRfcommSocketToServiceRecord(uuid);
 
                 // 再次检查是否应该停止
-                if (shouldStop || Thread.currentThread().isInterrupted()) {
+                if (!isCurrentForegroundAttempt() || Thread.currentThread().isInterrupted()) {
                     return;
                 }
 
                 insecureRfcommSocketToServiceRecord.connect();
-                
+
                 // 连接后再次检查
-                if (shouldStop || cancelRequested.get() || Thread.currentThread().isInterrupted()) {
+                if (!isCurrentForegroundAttempt() || Thread.currentThread().isInterrupted()) {
                     if (insecureRfcommSocketToServiceRecord != null && insecureRfcommSocketToServiceRecord.isConnected()) {
                         try {
                             insecureRfcommSocketToServiceRecord.close();
@@ -339,38 +342,42 @@ public class BluetoothObject extends EventDispatcher {
                     }
                     return;
                 }
-                
+
                 BluetoothServiceConnect bluetoothServiceConnect = new BluetoothServiceConnect();
-                if (!bluetoothServiceConnect.start(mcontex, insecureRfcommSocketToServiceRecord, connectionUuid)) {
+                if (!bluetoothServiceConnect.start(mcontex, insecureRfcommSocketToServiceRecord,
+                        connectionUuid, foregroundGeneration, this::isCurrentForegroundAttempt)) {
                     if (bluetoothServiceConnect.isDuplicateSession()) {
                         // A parallel/manual connection already owns this MAC. Treat this
                         // attempt as superseded instead of opening a duplicate chat or
                         // consuming a reconnect attempt.
-                        StaticObject.reconnectManager.onConnected(bluetoothDevice.getAddress());
+                        // This attempt has a terminal outcome. Its independent
+                        // timeout must never later mark the authoritative session FAILED.
+                        finishSupersededAttempt();
+                        StaticObject.reconnectManager.onClientConnected(
+                                bluetoothDevice.getAddress(), 0, foregroundGeneration);
                         return;
                     }
                     throw new IllegalStateException("Unable to initialize Bluetooth session");
                 }
                 activeSession = bluetoothServiceConnect;
                 sessionStarted.set(true);
-                if (shouldStop || cancelRequested.get() || Thread.currentThread().isInterrupted()) {
-                    closeActiveSession(cancelRequested.get());
+                if (!isCurrentForegroundAttempt() || Thread.currentThread().isInterrupted()) {
+                    closeActiveSession(userCanceled);
                     return;
                 }
                 connectStart = true;
-                if (shouldStop || cancelRequested.get()) {
-                    closeActiveSession(cancelRequested.get());
+                if (!isCurrentForegroundAttempt()) {
+                    closeActiveSession(userCanceled);
                     return;
                 }
-                boolean acceptedConnection = reconnectAttempt > 0
-                        ? StaticObject.reconnectManager.onConnected(
-                                bluetoothDevice.getAddress(), reconnectAttempt)
-                        : acceptManualConnection(bluetoothDevice.getAddress());
+                boolean acceptedConnection = StaticObject.reconnectManager.onClientConnected(
+                        bluetoothDevice.getAddress(), reconnectAttempt, foregroundGeneration,
+                        bluetoothServiceConnect.getSessionId());
                 if (!acceptedConnection) {
                     closeActiveSession(false);
                     return;
                 }
-                StaticObject.reconnectManager.remember(bluetoothDevice, connectionUuid);
+                StaticObject.reconnectManager.remember(bluetoothDevice, connectionUuid, foregroundGeneration);
                 BluetoothTelemetry.logConnectSuccess("spp_client", true, connectionUuid,
                         reconnectAttempt > 0, reconnectAttempt,
                         System.currentTimeMillis() - connectStartedAtMillis);
@@ -382,8 +389,12 @@ public class BluetoothObject extends EventDispatcher {
                 if (name == null || name.length() == 0) {
                     name = bluetoothDevice.getAddress();
                 }
-                BluetoothDeviceProfileStore.markConnected(
-                        bluetoothDevice.getAddress(), name, System.currentTimeMillis());
+                try {
+                    BluetoothDeviceProfileStore.markConnected(
+                            bluetoothDevice.getAddress(), name, System.currentTimeMillis());
+                } catch (RuntimeException metadataError) {
+                    Log.w(TAG, "Connected session device metadata could not be saved", metadataError);
+                }
                 liaoTian.putExtra("bluetoothName", name);
                 liaoTian.putExtra("bluetoothAdd", bluetoothDevice.getAddress());
                 liaoTian.putExtra("bluetoothUUid", connectionUuid);
@@ -392,31 +403,23 @@ public class BluetoothObject extends EventDispatcher {
                 drive.setDriveAdd(bluetoothDevice.getAddress());
                 drive.setUuid(connectionUuid);
                 liaoTian.putExtra("BluetoothDrive", drive);
-                final String displayName = name;
-                final String remoteAddress = bluetoothDevice.getAddress();
-                final String activeConnectionUuid = connectionUuid;
                 getMainHandler().post(() -> {
-                    if (cancelRequested.get() || shouldStop) {
-                        closeActiveSession(cancelRequested.get());
-                        return;
-                    }
-                    if (!MyApplication.isAppInForeground()) {
-                        BluetoothConnectionNotification.show(
-                                appContext, displayName, remoteAddress, activeConnectionUuid);
+                    if (!isCurrentForegroundAttempt()
+                            || StaticObject.bluetoothSocketMap.get(bluetoothDevice.getAddress()) != bluetoothServiceConnect
+                            || !bluetoothServiceConnect.isConnected()) {
+                        closeActiveSession(userCanceled);
                         return;
                     }
                     try {
                         appContext.startActivity(liaoTian);
                     } catch (RuntimeException error) {
                         Log.w(TAG, "Unable to open outgoing chat", error);
-                        BluetoothConnectionNotification.show(
-                                appContext, displayName, remoteAddress, activeConnectionUuid);
                     }
                 });
             } catch (Exception e) {
                 WeiboDialogUtils.closeDialog(loadingDialog);
                 connectStart = false;
-                if (cancelRequested.get()) {
+                if (!isCurrentForegroundAttempt()) {
                     return;
                 }
                 if (bluetoothDevice != null && sessionStarted.get()) {
@@ -443,6 +446,8 @@ public class BluetoothObject extends EventDispatcher {
                 notifyReconnectAttemptFailed();
                 Log.e(TAG, "Bluetooth connection failed", e);
             } finally {
+                cancelConnectionTimeout();
+                getMainHandler().post(() -> WeiboDialogUtils.closeDialog(loadingDialog));
                 if (bluetoothDevice != null) {
                     StaticObject.connectionAttemptRegistry.remove(
                             bluetoothDevice.getAddress(), this);
@@ -460,6 +465,12 @@ public class BluetoothObject extends EventDispatcher {
         } catch (Exception e) {
             Log.w(TAG, "Unable to close Bluetooth socket", e);
         }
+    }
+
+    /** A parallel accepted session owns this MAC; this client attempt is finished. */
+    void finishSupersededAttempt() {
+        failureGate.tryReport();
+        stopThreads();
     }
 
     private Handler getMainHandler() {
@@ -490,9 +501,9 @@ public class BluetoothObject extends EventDispatcher {
         closeSocketQuietly(insecureRfcommSocketToServiceRecord);
     }
 
-    private boolean acceptManualConnection(String address) {
-        StaticObject.reconnectManager.onConnected(address);
-        return true;
+    private boolean isCurrentForegroundAttempt() {
+        return !shouldStop && !cancelRequested.get()
+                && StaticObject.foregroundGate.isCurrent(foregroundGeneration);
     }
 
     public void cancelConnect() {
@@ -509,7 +520,10 @@ public class BluetoothObject extends EventDispatcher {
     }
 
     private void cancelConnect(boolean userInitiated) {
-        cancelRequested.set(true);
+        synchronized (StaticObject.foregroundGate) {
+            userCanceled = userInitiated;
+            cancelRequested.set(true);
+        }
         unregisterPairingReceiver();
         stopThreads();
         if (reconnectAttempt > 0 && bluetoothDevice != null) {
@@ -525,7 +539,8 @@ public class BluetoothObject extends EventDispatcher {
     }
 
     private void failConnection(BluetoothConnectionErrorCode errorCode, int messageId) {
-        if (cancelRequested.get() || !failureGate.tryReport()) {
+        if (cancelRequested.get() || !StaticObject.foregroundGate.isCurrent(foregroundGeneration)
+                || !failureGate.tryReport()) {
             return;
         }
         WeiboDialogUtils.closeDialog(loadingDialog);
@@ -541,9 +556,7 @@ public class BluetoothObject extends EventDispatcher {
     private void notifyReconnectAttemptFailed() {
         String address = bluetoothDevice == null ? null : bluetoothDevice.getAddress();
         if (reconnectAttempt > 0) {
-            StaticObject.reconnectManager.onAttemptFailed(address, reconnectAttempt);
-        } else {
-            StaticObject.reconnectManager.onAttemptFailed(address);
+            StaticObject.reconnectManager.onAttemptFailed(address, reconnectAttempt, foregroundGeneration);
         }
     }
 
@@ -578,15 +591,21 @@ public class BluetoothObject extends EventDispatcher {
         }
         String address = bluetoothDevice.getAddress();
         StaticObject.connectionAttemptRegistry.remove(address, this);
-        StaticObject.connectionRegistry.clearError(address);
-        StaticObject.connectionRegistry.set(address, BluetoothConnectionState.DISCONNECTED);
+        StaticObject.foregroundGate.runIfCurrent(foregroundGeneration, () -> {
+            if (StaticObject.connectionAttemptRegistry.get(address) == null) {
+                StaticObject.connectionRegistry.clearError(address);
+                StaticObject.connectionRegistry.set(address, BluetoothConnectionState.DISCONNECTED);
+            }
+        });
     }
 
     private void markConnectionFailed(BluetoothConnectionErrorCode errorCode) {
         if (bluetoothDevice != null) {
             StaticObject.connectionAttemptRegistry.remove(bluetoothDevice.getAddress(), this);
-            setConnectionError(errorCode);
-            StaticObject.connectionRegistry.set(bluetoothDevice.getAddress(), BluetoothConnectionState.FAILED);
+            StaticObject.foregroundGate.runIfCurrent(foregroundGeneration, () -> {
+                setConnectionError(errorCode);
+                StaticObject.connectionRegistry.set(bluetoothDevice.getAddress(), BluetoothConnectionState.FAILED);
+            });
         }
     }
 

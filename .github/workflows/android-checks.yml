@@ -1,0 +1,141 @@
+name: Android checks
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install compile SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Offline script and real signature regressions
+        run: python -B -m unittest discover -s scripts/tests -p 'test_*.py'
+      - name: Synthetic audit configuration
+        run: python -B scripts/prepare_offline_google_services.py --ci
+      - name: JVM, lint and optimized bundle (no publishing or mapping uploads)
+        run: bash ./gradlew --no-daemon -PofflineAudit testDebugUnitTest lintRelease writeReleaseUploadMetadata assembleDebug
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-reports
+          path: |
+            app/build/reports/
+            app/build/outputs/release-pipeline/metadata.json
+
+  emulator:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [23, 31, 36]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - name: Install compile SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Synthetic audit configuration
+        run: python -B scripts/prepare_offline_google_services.py --ci
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        id: device_tests
+        with:
+          api-level: ${{ matrix.api }}
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash ./gradlew --no-daemon -PofflineAudit connectedDebugAndroidTest
+      - name: Capture tested APK and device outcome
+        if: always()
+        run: python -B scripts/device_test_evidence.py --repository . --build-directory app/build --variant debug --api '${{ matrix.api }}' --run-status '${{ steps.device_tests.outcome }}' --output app/build/outputs/release-pipeline/device-test-evidence.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emulator-api-${{ matrix.api }}
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/release-pipeline/device-test-evidence.json
+
+  optimized-release-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+      - name: Install compile SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Synthetic audit config and disposable signing key
+        run: |
+          python -B scripts/prepare_offline_google_services.py --ci
+          keytool -genkeypair -alias offline -keyalg RSA -keystore "$RUNNER_TEMP/offline.p12" -storepass offline-fixture-password -keypass offline-fixture-password -dname 'CN=Offline CI' -validity 1 -storetype PKCS12
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        id: device_tests
+        env:
+          BLUETOOTH_UPLOAD_KEYSTORE: ${{ runner.temp }}/offline.p12
+          BLUETOOTH_UPLOAD_KEY_ALIAS: offline
+          BLUETOOTH_UPLOAD_STORE_PASSWORD: offline-fixture-password
+          BLUETOOTH_UPLOAD_KEY_PASSWORD: offline-fixture-password
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash ./gradlew --no-daemon -PofflineAudit -PreleaseSmokeTest connectedReleaseAndroidTest
+      - name: Capture optimized APK and device outcome
+        if: always()
+        run: python -B scripts/device_test_evidence.py --repository . --build-directory app/build --variant release --api 36 --run-status '${{ steps.device_tests.outcome }}' --output app/build/outputs/release-pipeline/device-test-evidence.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: optimized-release-smoke
+          path: |
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/release-pipeline/device-test-evidence.json

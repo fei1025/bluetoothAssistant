@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
@@ -12,18 +14,37 @@
         android:maxSdkVersion="30" />
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Billing acknowledgement uses short scheduled work, never a foreground worker. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" tools:node="remove" />
 
     <application
         android:name="com.zzf.bluetoothsmp.MyApplication"
         android:allowBackup="true"
+        android:usesCleartextTraffic="false"
+        android:localeConfig="@xml/locale_config"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.BluetoothSMP" >
+        <meta-data
+            android:name="firebase_analytics_default_allow_ad_personalization_signals"
+            android:value="false" />
+        <meta-data android:name="firebase_analytics_collection_enabled"
+            android:value="${telemetryCollectionEnabled}" />
+        <meta-data android:name="firebase_crashlytics_collection_enabled"
+            android:value="${telemetryCollectionEnabled}" />
+        <service android:name="androidx.work.impl.foreground.SystemForegroundService"
+            tools:node="remove" />
+        <activity android:name="com.zzf.bluetoothsmp.plugin.PluginCenterActivity" android:exported="false" android:theme="@style/Theme.BluetoothSMP.NoActionBar" />
+        <activity android:name="com.zzf.bluetoothsmp.plugin.PluginActivity" android:exported="false" android:theme="@style/Theme.BluetoothSMP.NoActionBar" />
+        <activity
+            android:name="com.zzf.bluetoothsmp.ble.BleActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.BluetoothSMP.NoActionBar" />
         <activity
             android:name="com.zzf.bluetoothsmp.liaoTian.Liantian_new"
             android:exported="false"
@@ -41,10 +62,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <service
-            android:name="com.zzf.bluetoothsmp.BluetoothConnectionForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="connectedDevice" />
+
     </application>
 
 </manifest>

@@ -10,8 +10,22 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url 'https://jitpack.io' }
-        jcenter { url 'https://maven.aliyun.com/repository/public' }
+        maven {
+            url 'https://jitpack.io'
+            content {
+                includeGroup 'com.github.amoskorir'
+                includeGroup 'com.github.mcxtzhang'
+                includeGroup 'com.github.amitshekhariitbhu.Android-Debug-Database'
+            }
+        }
+        // Legacy artifacts unavailable in Central; never use this mirror for AndroidX/Google.
+        maven {
+            url 'https://maven.aliyun.com/repository/public'
+            content {
+                includeGroup 'org.litepal.guolindev'
+                includeGroup 'com.amitshekhar.android'
+            }
+        }
     }
 }
 rootProject.name = "BluetoothSMP"

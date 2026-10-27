@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="keyboard_add_symbol" translatable="false">＋</string>
+    <string name="keyboard_add">添加按钮</string>
+    <string name="keyboard_use_hint">按下按钮发送指令，开启编辑可调整布局</string>
+    <string name="keyboard_edit_hint">轻点修改指令，拖动调整位置</string>
+    <string name="keyboard_limit">最多可添加 %1$d 个按钮</string>
+</resources>

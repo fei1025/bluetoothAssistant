@@ -23,5 +23,9 @@
 # LitePal loads model classes from assets/litepal.xml and reflects on their
 # field names. Keep both the ORM implementation and all persisted model names
 # so an optimized release remains compatible with the existing database.
--keep class org.litepal.** { *; }
--keep class * extends org.litepal.crud.LitePalSupport { *; }
+# core:3.2.3 ships no consumer rules. Its internal reflection and ORM inheritance
+# need names/members retained; permit optimization rather than guessing reflective roots.
+-keep,allowoptimization class org.litepal.** { *; }
+# Scope persisted schema to this application's entity package. Never rename fields:
+# old message.db column names and assets/litepal.xml are part of the upgrade contract.
+-keep,allowoptimization class com.zzf.bluetoothsmp.entity.** extends org.litepal.crud.LitePalSupport { *; }

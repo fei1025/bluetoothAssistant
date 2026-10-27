@@ -24,6 +24,10 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.activity.result.ActivityResult;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.lifecycle.ViewModelProvider;
 
 import com.zzf.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.StaticObject;
@@ -37,12 +41,16 @@ import com.zzf.bluetoothsmp.BluetoothProtocolConfigStore;
 import com.zzf.bluetoothsmp.BluetoothTextEncoding;
 import com.zzf.bluetoothsmp.BluetoothTextEncodingStore;
 import com.zzf.bluetoothsmp.BluetoothSendStatus;
+import com.zzf.bluetoothsmp.BluetoothSendBatch;
 import com.zzf.bluetoothsmp.BluetoothTelemetry;
-import com.zzf.bluetoothsmp.CommandMacroStore;
 import com.zzf.bluetoothsmp.MacroExecutor;
 import com.zzf.bluetoothsmp.MacroParser;
 import com.zzf.bluetoothsmp.MacroStep;
 import com.zzf.bluetoothsmp.MacroTransferCodec;
+import com.zzf.bluetoothsmp.DebugTransferState;
+import com.zzf.bluetoothsmp.DebugLogPipeline;
+import com.zzf.bluetoothsmp.DebugMacroState;
+import com.zzf.bluetoothsmp.utils.HistoryRepository;
 import com.zzf.bluetoothsmp.customAdapter.DebugLogAdapter;
 import com.zzf.bluetoothsmp.databinding.FragmentDebugBinding;
 import com.zzf.bluetoothsmp.entity.CommandMacroEntity;
@@ -70,10 +78,12 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class DebugFragment extends BaseFragment {
 
+    @Override
+    protected String getAnalyticsScreenName() {
+        return isEmbedded() ? "chat_debug" : "debug";
+    }
+
     private static final String ARG_EMBEDDED = "arg_embedded";
-    private static final int REQUEST_EXPORT_MACROS = 0x52;
-    private static final int REQUEST_IMPORT_MACROS = 0x53;
-    private static final int REQUEST_EXPORT_LOGS = 0x54;
 
     private FragmentDebugBinding binding;
     private DebugLogAdapter adapter;
@@ -82,6 +92,7 @@ public class DebugFragment extends BaseFragment {
     // Connection state
     private volatile boolean isConnected = false;
     private String connectedDeviceAddress;
+    private volatile String connectedSessionId;
     private String connectedDeviceName;
     private long connectionStartTime = 0;
     private Handler timerHandler;
@@ -95,19 +106,43 @@ public class DebugFragment extends BaseFragment {
     // Send test
     private volatile boolean isSending = false;
     private Thread sendThread;
+    private BluetoothSendBatch continuousSendBatch;
 
     private EventListener sendListener;
+    private EventListener sendStatusListener;
     private EventListener receiveListener;
     private EventListener notConnectListener;
     private String lastDiagnosticsReport;
     private BluetoothServiceConnect progressConnection;
     private boolean segmentedSendActive;
     private MacroExecutor macroExecutor;
+    private BluetoothSendBatch macroSendBatch;
+    private long statsSentBase, statsReceivedBase, statsFramesBase, statsSendCountBase, statsErrorsBase;
+    private long statsStartedAt = System.currentTimeMillis();
     private final List<CommandMacroEntity> macros = new ArrayList<>();
     private ArrayAdapter<String> macroAdapter;
     private boolean loadingMacroSelection;
-    private String pendingMacroExport;
-    private String pendingLogExport;
+    private DebugMacroState macroState;
+    private DebugTransferState transferState;
+    private ActivityResultLauncher<Intent> macroExportLauncher;
+    private ActivityResultLauncher<Intent> macroImportLauncher;
+    private ActivityResultLauncher<Intent> logExportLauncher;
+    private volatile DebugLogPipeline logPipeline;
+    private final Handler logUi = new Handler(Looper.getMainLooper());
+    private boolean displayPaused;
+    private long lastLogRevision = -1;
+    private volatile long viewEpoch;
+    private final Runnable flushLogs = new Runnable() {
+        @Override public void run() {
+            if (binding == null || logPipeline == null) return;
+            long revision = logPipeline.revision();
+            if (!displayPaused && revision != lastLogRevision) {
+                adapter.replaceLogs(logPipeline.snapshot()); lastLogRevision = revision;
+            }
+            updateStats();
+            logUi.postDelayed(this, 100);
+        }
+    };
     private ArrayAdapter<String> deviceSelectorAdapter;
     private final List<String> debugDeviceAddresses = new ArrayList<>();
     private boolean loadingDeviceSelection;
@@ -124,6 +159,14 @@ public class DebugFragment extends BaseFragment {
     public void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         debugUUID = UUID.randomUUID().toString();
+        transferState = new ViewModelProvider(this).get(DebugTransferState.class);
+        macroState = new ViewModelProvider(this).get(DebugMacroState.class);
+        macroExportLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
+                result -> documentResult(result, "macro"));
+        macroImportLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
+                result -> documentResult(result, "import"));
+        logExportLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
+                result -> documentResult(result, "log"));
     }
 
     @Nullable
@@ -137,6 +180,9 @@ public class DebugFragment extends BaseFragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
+        viewEpoch++;
+        logPipeline = new DebugLogPipeline(getString(R.string.debug_preview_truncated));
+        lastLogRevision = -1;
         macroExecutor = new MacroExecutor();
 
         boolean embedded = isEmbedded();
@@ -159,6 +205,9 @@ public class DebugFragment extends BaseFragment {
         registerEventListeners();
         updateConnectionStatus();
         loadFrameConfig();
+        observeTransfers();
+        transferState.resumePending(requireContext());
+        logUi.post(flushLogs);
     }
 
     private boolean isEmbedded() {
@@ -177,6 +226,7 @@ public class DebugFragment extends BaseFragment {
         adapter = new DebugLogAdapter();
         binding.logRecyclerView.setLayoutManager(new LinearLayoutManager(getContext()));
         binding.logRecyclerView.setAdapter(adapter);
+        binding.btnPauseLogs.setText(displayPaused ? R.string.debug_resume_logs : R.string.debug_pause_logs);
 
         // Toggle Hex/ASCII view
         binding.btnToggleView.setOnClickListener(v -> {
@@ -187,12 +237,18 @@ public class DebugFragment extends BaseFragment {
 
         // Clear log
         binding.btnClearLog.setOnClickListener(v -> {
+            logPipeline.clear();
             adapter.clearLogs();
             resetStats();
         });
 
         // Export log
         binding.btnExportLog.setOnClickListener(v -> exportLogs());
+        binding.btnPauseLogs.setOnClickListener(v -> {
+            displayPaused = !displayPaused;
+            binding.btnPauseLogs.setText(displayPaused ? R.string.debug_resume_logs : R.string.debug_pause_logs);
+            if (!displayPaused) lastLogRevision = -1;
+        });
     }
 
     private void setupConnectionMonitor() {
@@ -276,13 +332,17 @@ public class DebugFragment extends BaseFragment {
         if (connection == null) {
             return;
         }
-        boolean changed = !address.equals(connectedDeviceAddress);
+        boolean changed = !address.equals(connectedDeviceAddress)
+                || !connection.getSessionId().equals(connectedSessionId);
+        if (changed) stopSend();
         connectedDeviceAddress = address;
+        connectedSessionId = connection.getSessionId();
         connectedDeviceName = getRemoteDeviceName(connection);
         if (connectedDeviceName == null || connectedDeviceName.isEmpty()) {
             connectedDeviceName = address;
         }
         if (changed) {
+            logPipeline.clear();
             adapter.clearLogs();
             resetStats();
         }
@@ -441,6 +501,12 @@ public class DebugFragment extends BaseFragment {
         binding.btnExportMacros.setOnClickListener(v -> exportMacros());
         binding.btnImportMacros.setOnClickListener(v -> importMacros());
         binding.btnMacroHelp.setOnClickListener(v -> showMacroHelp());
+        macroState.results().observe(getViewLifecycleOwner(), result -> {
+            if (result == null || !java.util.Objects.equals(result.address, normalizedDiagnosticAddress())) return;
+            renderMacros(result.macros);
+            int feedback = macroState.consumeFeedback(result.generation);
+            if (feedback != 0) Toast.makeText(requireContext(), feedback, Toast.LENGTH_SHORT).show();
+        });
     }
 
     private void showMacroHelp() {
@@ -452,14 +518,14 @@ public class DebugFragment extends BaseFragment {
     }
 
     private void loadMacros() {
-        if (macroAdapter == null) {
-            return;
-        }
-        String address = normalizedDiagnosticAddress();
+        if (macroAdapter == null || binding == null) return;
+        macroState.load(normalizedDiagnosticAddress());
+    }
+
+    private void renderMacros(List<CommandMacroEntity> loaded) {
+        if (binding == null || macroAdapter == null) return;
         macros.clear();
-        if (address != null) {
-            macros.addAll(CommandMacroStore.findForAddress(address));
-        }
+        macros.addAll(loaded);
         loadingMacroSelection = true;
         macroAdapter.clear();
         for (CommandMacroEntity macro : macros) {
@@ -474,6 +540,12 @@ public class DebugFragment extends BaseFragment {
             binding.macroScriptInput.setText("");
             binding.macroRepeatInput.setText("1");
         }
+    }
+
+    private boolean rejectBusyMacroStorage() {
+        if (!macroState.isBusy()) return false;
+        Toast.makeText(requireContext(), R.string.macro_storage_busy, Toast.LENGTH_SHORT).show();
+        return true;
     }
 
     private void loadMacro(CommandMacroEntity macro) {
@@ -491,6 +563,7 @@ public class DebugFragment extends BaseFragment {
     }
 
     private void saveMacro() {
+        if (rejectBusyMacroStorage()) return;
         String address = normalizedDiagnosticAddress();
         if (address == null) {
             Toast.makeText(getContext(), R.string.macro_no_device, Toast.LENGTH_SHORT).show();
@@ -530,141 +603,94 @@ public class DebugFragment extends BaseFragment {
                     Toast.LENGTH_LONG).show();
             return;
         }
-        CommandMacroEntity macro = CommandMacroStore.findByName(address, name);
-        if (macro == null) {
-            macro = new CommandMacroEntity();
-            macro.setBluetoothAddress(address);
-        }
-        macro.setName(name);
-        macro.setScript(script);
-        macro.setRepeatCount(repeat);
-        CommandMacroStore.save(macro);
-        loadMacros();
-        Toast.makeText(getContext(), R.string.macro_saved, Toast.LENGTH_SHORT).show();
+        if (!macroState.save(address, name, script, repeat)) rejectBusyMacroStorage();
     }
 
     private void deleteMacro() {
+        if (rejectBusyMacroStorage()) return;
         CommandMacroEntity macro = selectedMacro();
         if (macro == null) {
             return;
         }
-        macro.delete();
-        loadMacros();
-        Toast.makeText(getContext(), R.string.macro_deleted, Toast.LENGTH_SHORT).show();
+        String address = normalizedDiagnosticAddress();
+        if (!java.util.Objects.equals(address, macro.getBluetoothAddress())) return;
+        if (!macroState.delete(address, macro)) rejectBusyMacroStorage();
     }
 
     private void exportMacros() {
         String address = normalizedDiagnosticAddress();
         if (address == null) {
-            Toast.makeText(getContext(), R.string.macro_transfer_no_device,
-                    Toast.LENGTH_SHORT).show();
-            return;
+            Toast.makeText(getContext(), R.string.macro_transfer_no_device, Toast.LENGTH_SHORT).show(); return;
         }
-        try {
-            pendingMacroExport = MacroTransferCodec.exportMacros(
-                    CommandMacroStore.findForAddress(address));
-            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
-                    .addCategory(Intent.CATEGORY_OPENABLE)
-                    .setType("text/plain")
-                    .putExtra(Intent.EXTRA_TITLE, "spp_macros.txt");
-            startActivityForResult(intent, REQUEST_EXPORT_MACROS);
-        } catch (IllegalArgumentException error) {
-            pendingMacroExport = null;
-            Toast.makeText(getContext(), R.string.macro_transfer_failed,
-                    Toast.LENGTH_SHORT).show();
+        if (!transferState.prepareMacros(requireContext(), address)) {
+            Toast.makeText(getContext(), R.string.debug_file_busy, Toast.LENGTH_SHORT).show();
         }
     }
 
     private void importMacros() {
-        if (normalizedDiagnosticAddress() == null) {
-            Toast.makeText(getContext(), R.string.macro_transfer_no_device,
-                    Toast.LENGTH_SHORT).show();
-            return;
+        String address = normalizedDiagnosticAddress();
+        if (address == null) {
+            Toast.makeText(getContext(), R.string.macro_transfer_no_device, Toast.LENGTH_SHORT).show(); return;
         }
-        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT)
-                .addCategory(Intent.CATEGORY_OPENABLE)
-                .setType("text/plain");
-        startActivityForResult(intent, REQUEST_IMPORT_MACROS);
-    }
-
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (resultCode != android.app.Activity.RESULT_OK || data == null
-                || data.getData() == null) {
-            if (requestCode == REQUEST_EXPORT_MACROS) {
-                pendingMacroExport = null;
-            } else if (requestCode == REQUEST_EXPORT_LOGS) {
-                pendingLogExport = null;
-            }
-            return;
+        if (!transferState.beginImport(address)) {
+            Toast.makeText(getContext(), R.string.debug_file_busy, Toast.LENGTH_SHORT).show(); return;
         }
-        if (requestCode == REQUEST_EXPORT_MACROS) {
-            writeMacroExport(data.getData());
-        } else if (requestCode == REQUEST_IMPORT_MACROS) {
-            readMacroImport(data.getData());
-        } else if (requestCode == REQUEST_EXPORT_LOGS) {
-            writeLogExport(data.getData());
+        try {
+            macroImportLauncher.launch(new Intent(Intent.ACTION_OPEN_DOCUMENT)
+                    .addCategory(Intent.CATEGORY_OPENABLE).setType("text/plain")
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION));
+        } catch (RuntimeException unavailablePicker) {
+            transferState.cancel("import");
+            Toast.makeText(requireContext(), R.string.macro_transfer_failed, Toast.LENGTH_SHORT).show();
         }
     }
 
-    private void writeMacroExport(Uri uri) {
-        String content = pendingMacroExport;
-        pendingMacroExport = null;
-        if (content == null) {
-            return;
-        }
-        try (OutputStream output = requireContext().getContentResolver().openOutputStream(uri)) {
-            if (output == null) {
-                throw new IllegalStateException("unable to open export destination");
+    private void observeTransfers() {
+        transferState.readyExports().observe(getViewLifecycleOwner(), slot -> {
+            if (slot == null || !transferState.markPickerLaunched(slot)) return;
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                    .setType("text/plain").putExtra(Intent.EXTRA_TITLE, transferState.filename(slot))
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                            | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+            try {
+                if ("macro".equals(slot)) macroExportLauncher.launch(intent);
+                else logExportLauncher.launch(intent);
+            } catch (RuntimeException unavailablePicker) {
+                transferState.cancel(slot);
+                Toast.makeText(requireContext(), R.string.export_failed, Toast.LENGTH_SHORT).show();
             }
-            output.write(content.getBytes(StandardCharsets.UTF_8));
-            Toast.makeText(getContext(), R.string.macro_exported, Toast.LENGTH_SHORT).show();
-        } catch (Exception error) {
-            Toast.makeText(getContext(), R.string.macro_transfer_failed,
-                    Toast.LENGTH_SHORT).show();
-        }
+        });
+        transferState.feedback().observe(getViewLifecycleOwner(), result -> {
+            if (result == null) return;
+            int resource = result.getInt("resource"), count = result.getInt("count");
+            transferState.consumeFeedback();
+            Toast.makeText(requireContext(), resource == R.string.macro_imported
+                    ? getString(resource, count) : getString(resource), Toast.LENGTH_SHORT).show();
+            if (resource == R.string.macro_imported) loadMacros();
+            if (resource == R.string.log_exported) BluetoothTelemetry.logUserAction("log_exported");
+        });
     }
 
-    private void readMacroImport(Uri uri) {
-        try (InputStream input = requireContext().getContentResolver().openInputStream(uri)) {
-            if (input == null) {
-                throw new IllegalStateException("unable to open macro source");
-            }
-            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-            byte[] chunk = new byte[4096];
-            int read;
-            while ((read = input.read(chunk)) != -1) {
-                buffer.write(chunk, 0, read);
-                if (buffer.size() > 256 * 1024) {
-                    throw new IllegalArgumentException("macro export is too large");
-                }
-            }
-            List<CommandMacroEntity> imported = MacroTransferCodec.importMacros(
-                    new String(buffer.toByteArray(), StandardCharsets.UTF_8));
-            String address = normalizedDiagnosticAddress();
-            if (address == null) {
-                throw new IllegalArgumentException("no device");
-            }
-            for (CommandMacroEntity importedMacro : imported) {
-                CommandMacroEntity macro = CommandMacroStore.findByName(
-                        address, importedMacro.getName());
-                if (macro == null) {
-                    macro = new CommandMacroEntity();
-                    macro.setBluetoothAddress(address);
-                }
-                macro.setName(importedMacro.getName());
-                macro.setScript(importedMacro.getScript());
-                macro.setRepeatCount(importedMacro.getRepeatCount());
-                CommandMacroStore.save(macro);
-            }
-            loadMacros();
-            Toast.makeText(getContext(), getString(R.string.macro_imported, imported.size()),
-                    Toast.LENGTH_SHORT).show();
-        } catch (Exception error) {
-            Toast.makeText(getContext(), R.string.macro_transfer_failed,
-                    Toast.LENGTH_SHORT).show();
+    private void documentResult(ActivityResult result, String slot) {
+        Intent data = result.getData();
+        if (result.getResultCode() != Activity.RESULT_OK || data == null || data.getData() == null) {
+            transferState.cancel(slot); return;
         }
+        Uri uri = data.getData();
+        int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+        try {
+            if (flags == (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION)) {
+                requireContext().getContentResolver().takePersistableUriPermission(uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            } else if (flags == Intent.FLAG_GRANT_READ_URI_PERMISSION) {
+                requireContext().getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } else if (flags == Intent.FLAG_GRANT_WRITE_URI_PERMISSION) {
+                requireContext().getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            }
+        }
+        catch (SecurityException | IllegalArgumentException nonPersistentProvider) { /* Immediate IO still uses the activity grant. */ }
+        if ("import".equals(slot)) transferState.importMacros(requireContext(), uri);
+        else transferState.writeExport(requireContext(), uri, slot);
     }
 
     private void runMacro() {
@@ -681,26 +707,43 @@ public class DebugFragment extends BaseFragment {
         }
         try {
             List<MacroStep> steps = MacroParser.parse(macro.getScript());
+            final long generation = StaticObject.foregroundGate.currentGeneration();
+            final String session = connectedSessionId;
+            if (macroSendBatch != null) macroSendBatch.cancel();
+            final BluetoothSendBatch batch = new BluetoothSendBatch();
+            macroSendBatch = batch;
             getMacroExecutor().execute(steps, macro.getRepeatCount(),
-                    step -> enqueueMacroStep(address, step));
+                    step -> enqueueMacroStep(address, step, generation, session, batch));
             Toast.makeText(getContext(), R.string.macro_started, Toast.LENGTH_SHORT).show();
         } catch (IllegalArgumentException error) {
             Toast.makeText(getContext(), R.string.macro_invalid, Toast.LENGTH_SHORT).show();
         }
     }
 
-    private void enqueueMacroStep(String address, MacroStep step) throws InterruptedException {
+    private void enqueueMacroStep(String address, MacroStep step, long generation, String session,
+                                  BluetoothSendBatch batch) throws InterruptedException {
+        if (!StaticObject.foregroundGate.isCurrent(generation)) {
+            throw new InterruptedException("Macro foreground interval ended");
+        }
         if (step.getType() == MacroStep.Type.TEXT) {
             BluetoothServiceConnect connection = StaticObject.bluetoothSocketMap.get(address);
-            if (connection == null) {
+            if (connection == null || !connection.getSessionId().equals(session) || batch.isCanceled()) {
                 throw new IllegalStateException("device is no longer connected");
             }
             Msg msg = new Msg(connection.encodeTextPayload(step.getText()), Msg.TYPE_SENT, address);
+            msg.setForegroundGeneration(generation);
+            msg.setSessionId(session);
+            msg.setSendBatch(batch);
             msg.setContent(step.getText());
             msg.setPersistHistory(false);
-            StaticObject.mTaskQueue.put(msg);
+            if (!StaticObject.submitMessage(msg)) {
+                postToView(() -> Toast.makeText(requireContext(), R.string.send_queue_full, Toast.LENGTH_SHORT).show());
+                throw new InterruptedException("Macro admission failed");
+            }
+            if (!awaitSend(msg, session, generation)) throw new InterruptedException("Macro send failed");
         } else if (step.getType() == MacroStep.Type.HEX) {
-            enqueuePayload(step.getBytes(), address, 0L, false);
+            Msg msg = enqueuePayload(step.getBytes(), address, 0L, false, batch, generation, session);
+            if (msg == null || !awaitSend(msg, session, generation)) throw new InterruptedException("Macro send failed");
         }
     }
 
@@ -708,72 +751,30 @@ public class DebugFragment extends BaseFragment {
         return BluetoothAddressUtils.normalize(resolveDiagnosticAddress());
     }
 
+    private boolean matchesSelectedSession(Msg message) {
+        return message != null && isConnected && connectedSessionId != null
+                && connectedSessionId.equals(message.getSessionId())
+                && java.util.Objects.equals(connectedDeviceAddress, message.getBluetoothAdd())
+                && message.isForegroundGenerationCurrent();
+    }
+
     private void registerEventListeners() {
-        // Listen for SEND events
-        sendListener = new EventListener() {
-            @Override
-            public void onEvent(Event event) {
-                if (!isAdded()) return;
-                Msg msg = (Msg) event.getEventData()[0];
-                if (isConnected && msg.getBluetoothAdd() != null
-                        && msg.getBluetoothAdd().equals(connectedDeviceAddress)) {
-                    addLogItem(msg, true);
-                    totalBytesSent.addAndGet(msg.getPayloadOrUtf8().length);
-                    totalMessages.incrementAndGet();
-                    updateStats();
-                }
-            }
-        };
-
-        // Listen for RECEIVE events
-        receiveListener = new EventListener() {
-            @Override
-            public void onEvent(Event event) {
-                if (!isAdded()) return;
-                Msg msg = (Msg) event.getEventData()[0];
-                if (isConnected && msg.getBluetoothAdd() != null
-                        && msg.getBluetoothAdd().equals(connectedDeviceAddress)) {
-                    addLogItem(msg, false);
-                    totalBytesReceived.addAndGet(msg.getPayloadOrUtf8().length);
-                    totalMessages.incrementAndGet();
-                    updateStats();
-                }
-            }
-        };
-
-        // Listen for disconnect events
-        notConnectListener = new EventListener() {
-            @Override
-            public void onEvent(Event event) {
-                if (!isAdded()) return;
-                postToView(() -> {
-                    refreshDeviceSelector();
-                });
-            }
-        };
-
+        final long listenerEpoch = viewEpoch;
+        sendListener = event -> acceptLog((Msg) event.getEventData()[0], true, listenerEpoch);
+        sendStatusListener = event -> acceptLog((Msg) event.getEventData()[0], true, listenerEpoch);
+        receiveListener = event -> acceptLog((Msg) event.getEventData()[0], false, listenerEpoch);
+        notConnectListener = event -> postToView(this::refreshDeviceSelector);
         StaticObject.bluetoothEvent.addEventListener(BluetoothType.SEND, sendListener, debugUUID);
+        StaticObject.bluetoothEvent.addEventListener(BluetoothType.SEND_STATUS, sendStatusListener, debugUUID);
         StaticObject.bluetoothEvent.addEventListener(BluetoothType.RECEIVE, receiveListener, debugUUID);
         StaticObject.bluetoothEvent.addEventListener(BluetoothType.NOT_CONNECT, notConnectListener, debugUUID);
     }
 
-    private void addLogItem(Msg msg, boolean isSent) {
-        postToView(() -> {
-            String content = msg.getContent();
-            if (content == null) return;
-
-            // Remove trailing \r\n for cleaner display
-            if (content.endsWith("\r\n")) {
-                content = content.substring(0, content.length() - 2);
-            }
-
-            byte[] rawBytes = msg.getPayloadOrUtf8();
-            LogItem logItem = new LogItem(content, rawBytes, isSent ? LogItem.TYPE_SENT : LogItem.TYPE_RECEIVED, msg.getBluetoothAdd());
-            logItem.setHexContent(HexUtils.bytesToHex(rawBytes));
-            logItem.setAsciiContent(HexUtils.bytesToAscii(rawBytes));
-
-            adapter.addLog(logItem);
-        });
+    private void acceptLog(Msg message, boolean sent, long listenerEpoch) {
+        DebugLogPipeline pipeline = logPipeline;
+        if (listenerEpoch == viewEpoch && pipeline != null && matchesSelectedSession(message)) {
+            pipeline.offer(message, sent);
+        }
     }
 
     private void postToView(Runnable action) {
@@ -784,8 +785,9 @@ public class DebugFragment extends BaseFragment {
         if (activity == null) {
             return;
         }
+        final long epoch = viewEpoch;
         activity.runOnUiThread(() -> {
-            if (!isAdded() || binding == null) {
+            if (!isAdded() || binding == null || epoch != viewEpoch) {
                 return;
             }
             action.run();
@@ -831,7 +833,7 @@ public class DebugFragment extends BaseFragment {
             binding.connectionState.setTextColor(ContextCompat.getColor(requireContext(), R.color.teal_700));
             binding.connectionDuration.setVisibility(View.VISIBLE);
             binding.deviceInfoLayout.setVisibility(View.VISIBLE);
-            binding.deviceName.setText(getString(R.string.device_name) + ": " + connectedDeviceName);
+            binding.deviceName.setText(getString(R.string.debug_device_format, connectedDeviceName));
             binding.deviceAddress.setText(connectedDeviceAddress);
                     binding.throughputLayout.setVisibility(View.VISIBLE);
 
@@ -843,11 +845,13 @@ public class DebugFragment extends BaseFragment {
 
     private void handleDisconnect() {
         isConnected = false;
+        connectedSessionId = null;
         connectedDeviceAddress = null;
         connectedDeviceName = null;
         if (macroExecutor != null) {
             macroExecutor.cancel();
         }
+        if (macroSendBatch != null) macroSendBatch.cancel();
         stopSend();
         attachSendProgressListener(null);
 
@@ -861,9 +865,11 @@ public class DebugFragment extends BaseFragment {
             binding.sendProgress.setVisibility(View.GONE);
             binding.sendProgressText.setVisibility(View.GONE);
 
-            timerHandler.removeCallbacks(timerRunnable);
+            if (timerHandler != null) timerHandler.removeCallbacks(timerRunnable);
             adapter.clearLogs();
+            if (logPipeline != null) logPipeline.clear();
             resetStats();
+            loadMacros();
         });
     }
 
@@ -884,19 +890,21 @@ public class DebugFragment extends BaseFragment {
         postToView(() -> {
             BluetoothServiceConnect connection = connectedDeviceAddress == null ? null
                     : StaticObject.bluetoothSocketMap.get(connectedDeviceAddress);
-            long sent = connection == null ? totalBytesSent.get() : connection.getBytesSentCount();
-            long received = connection == null ? totalBytesReceived.get() : connection.getBytesReceivedCount();
-            long frames = connection == null ? totalMessages.get() : connection.getReceivedFrameCount();
-            long errors = connection == null ? 0L : connection.getErrorCount();
-            long connectedAt = connection == null ? connectionStartTime : connection.getConnectedAtMillis();
-            long elapsedMillis = Math.max(1L, System.currentTimeMillis() - connectedAt);
+            if (connection == null || !connection.getSessionId().equals(connectedSessionId)) return;
+            // Transport increments these only on the actual terminal SENT/received frame.
+            long sent = Math.max(0, connection.getBytesSentCount() - statsSentBase);
+            long received = Math.max(0, connection.getBytesReceivedCount() - statsReceivedBase);
+            long frames = Math.max(0, connection.getReceivedFrameCount() - statsFramesBase);
+            long errors = Math.max(0, connection.getErrorCount() - statsErrorsBase);
+            long messages = frames + Math.max(0, connection.getSuccessfulSendCount() - statsSendCountBase);
+            long elapsedMillis = Math.max(1L, System.currentTimeMillis() - statsStartedAt);
             double rate = (sent + received) * 1000.0d / elapsedMillis;
-            binding.bytesSent.setText(String.format(Locale.getDefault(), "Sent: %d B", sent));
-            binding.bytesReceived.setText(String.format(Locale.getDefault(), "Rcvd: %d B", received));
-            binding.totalMessages.setText(String.format(Locale.getDefault(), "Msgs: %d", totalMessages.get()));
-            binding.framesReceived.setText(String.format(Locale.getDefault(), "Frames: %d", frames));
-            binding.connectionErrors.setText(String.format(Locale.getDefault(), "Errors: %d", errors));
-            binding.throughputRate.setText(String.format(Locale.getDefault(), "Rate: %.1f B/s", rate));
+            binding.bytesSent.setText(getString(R.string.debug_sent_format, sent + " B"));
+            binding.bytesReceived.setText(getString(R.string.debug_received_format, received + " B"));
+            binding.totalMessages.setText(getString(R.string.debug_messages_format, messages));
+            binding.framesReceived.setText(getString(R.string.debug_frames_format, frames));
+            binding.connectionErrors.setText(getString(R.string.debug_errors_format, errors));
+            binding.throughputRate.setText(getString(R.string.debug_rate_format, String.format(Locale.getDefault(), "%.1f B", rate)));
         });
     }
 
@@ -904,6 +912,13 @@ public class DebugFragment extends BaseFragment {
         totalBytesSent.set(0);
         totalBytesReceived.set(0);
         totalMessages.set(0);
+        BluetoothServiceConnect connection = connectedDeviceAddress == null ? null : StaticObject.bluetoothSocketMap.get(connectedDeviceAddress);
+        statsSentBase = connection == null ? 0 : connection.getBytesSentCount();
+        statsReceivedBase = connection == null ? 0 : connection.getBytesReceivedCount();
+        statsFramesBase = connection == null ? 0 : connection.getReceivedFrameCount();
+        statsSendCountBase = connection == null ? 0 : connection.getSuccessfulSendCount();
+        statsErrorsBase = connection == null ? 0 : connection.getErrorCount();
+        statsStartedAt = System.currentTimeMillis();
         updateStats();
     }
 
@@ -930,11 +945,13 @@ public class DebugFragment extends BaseFragment {
         }
 
         byte[] bytes = HexUtils.hexStringToBytes(hexInput);
-        sendMessage(bytes);
-        Toast.makeText(getContext(), R.string.send_success, Toast.LENGTH_SHORT).show();
+        if (sendMessage(bytes)) Toast.makeText(getContext(), R.string.send_queued, Toast.LENGTH_SHORT).show();
     }
 
     private void startContinuousSend() {
+        if (isSending) {
+            return;
+        }
         if (!isConnected) {
             Toast.makeText(getContext(), R.string.no_connection, Toast.LENGTH_SHORT).show();
             return;
@@ -962,6 +979,7 @@ public class DebugFragment extends BaseFragment {
         }
         final byte[] payload = HexUtils.hexStringToBytes(payloadHex);
         final String address = connectedDeviceAddress;
+        final String session = connectedSessionId;
         final long segmentIntervalMillis;
         if (payload.length > 1024) {
             long parsedSegmentInterval = 0L;
@@ -975,28 +993,55 @@ public class DebugFragment extends BaseFragment {
             segmentIntervalMillis = 0L;
         }
 
+        final long generation = StaticObject.foregroundGate.currentGeneration();
+        final BluetoothSendBatch batch = new BluetoothSendBatch();
+        continuousSendBatch = batch;
         isSending = true;
         binding.btnContinuousSend.setEnabled(false);
         binding.btnStopSend.setEnabled(true);
 
         sendThread = new Thread(() -> {
-            while (isSending && isConnected) {
-                enqueuePayload(payload, address, segmentIntervalMillis);
-
-                try {
+            // A captured batch prevents an old producer from restarting when the
+            // user quickly presses Stop and then starts another continuous send.
+            try {
+                while (!batch.isCanceled() && isConnected && java.util.Objects.equals(session, connectedSessionId)) {
+                    Msg message = enqueuePayload(payload, address, segmentIntervalMillis, true, batch, generation, session);
+                    if (message == null) break;
+                    if (!awaitSend(message, session, generation)) {
+                        postToView(() -> Toast.makeText(requireContext(),
+                                message.getSendError() != null && message.getSendError().contains("budget")
+                                        ? R.string.send_queue_full : R.string.send_progress_failed,
+                                Toast.LENGTH_SHORT).show());
+                        break;
+                    }
                     Thread.sleep(interval);
-                } catch (InterruptedException e) {
-                    break;
                 }
+            } catch (InterruptedException stopped) {
+                Thread.currentThread().interrupt();
+            } finally {
+                batch.cancel();
+                postToView(() -> { if (continuousSendBatch == batch) stopSend(); });
             }
         });
         sendThread.start();
     }
 
+    @Override
+    public void onStop() {
+        stopSend();
+        if (macroExecutor != null) {
+            macroExecutor.cancel();
+        }
+        if (macroSendBatch != null) macroSendBatch.cancel();
+        super.onStop();
+    }
+
     private void stopSend() {
         isSending = false;
-        if (progressConnection != null) {
-            progressConnection.cancelSegmentedSends();
+        BluetoothSendBatch batch = continuousSendBatch;
+        continuousSendBatch = null;
+        if (batch != null) {
+            batch.cancel();
         }
         if (sendThread != null) {
             sendThread.interrupt();
@@ -1027,12 +1072,16 @@ public class DebugFragment extends BaseFragment {
             connection.setSendProgressListener(new BluetoothServiceConnect.SendProgressListener() {
                 @Override
                 public void onStatus(BluetoothSendStatus status, long requestId) {
-                    handleSegmentedStatus(status);
+                    postToView(() -> {
+                        if (progressConnection == connection && connection.getSessionId().equals(connectedSessionId)) handleSegmentedStatus(status);
+                    });
                 }
 
                 @Override
                 public void onProgress(long requestId, int sentBytes, int totalBytes) {
-                    handleSegmentedProgress(sentBytes, totalBytes);
+                    postToView(() -> {
+                        if (progressConnection == connection && connection.getSessionId().equals(connectedSessionId)) handleSegmentedProgress(sentBytes, totalBytes);
+                    });
                 }
             });
         }
@@ -1077,35 +1126,48 @@ public class DebugFragment extends BaseFragment {
         segmentedSendActive = false;
     }
 
-    private void sendMessage(byte[] payload) {
+    private boolean sendMessage(byte[] payload) {
         long intervalMillis = 0L;
         if (payload != null && payload.length > 1024) {
-            try {
-                intervalMillis = parseNonNegative(binding.intervalInput.getText());
-            } catch (IllegalArgumentException ignored) {
-                // Keep the large payload continuous when the interval field is invalid.
-            }
+            try { intervalMillis = parseNonNegative(binding.intervalInput.getText()); }
+            catch (IllegalArgumentException ignored) { }
         }
-        enqueuePayload(payload, connectedDeviceAddress, intervalMillis);
+        return enqueuePayload(payload, connectedDeviceAddress, intervalMillis, true, null,
+                StaticObject.foregroundGate.currentGeneration(), connectedSessionId) != null;
     }
 
-    private void enqueuePayload(byte[] payload, String address, long intervalMillis) {
-        enqueuePayload(payload, address, intervalMillis, true);
-    }
-
-    private void enqueuePayload(byte[] payload, String address, long intervalMillis,
-                                boolean persistHistory) {
-        Msg msg = new Msg(payload, Msg.TYPE_SENT, address);
-        msg.setPersistHistory(persistHistory);
+    private Msg enqueuePayload(byte[] payload, String address, long intervalMillis,
+                               boolean persistHistory, BluetoothSendBatch batch, long generation,
+                               String expectedSession) {
+        if (address == null || expectedSession == null) return null;
+        BluetoothServiceConnect connection = StaticObject.bluetoothSocketMap.get(address);
+        if (!StaticObject.foregroundGate.isCurrent(generation) || (batch != null && batch.isCanceled())
+                || connection == null || !connection.getSessionId().equals(expectedSession)) return null;
+        if (!connection.canAcceptSend(payload == null ? 0 : payload.length)) {
+            postToView(() -> Toast.makeText(requireContext(), R.string.send_queue_full, Toast.LENGTH_SHORT).show());
+            return null;
+        }
+        Msg message = new Msg(payload, Msg.TYPE_SENT, address);
+        message.setSessionId(expectedSession);
+        message.setForegroundGeneration(generation); message.setPersistHistory(persistHistory); message.setSendBatch(batch);
         if (payload != null && payload.length > 1024) {
-            msg.setSegmentSize(1024);
-            msg.setSegmentIntervalMillis(Math.max(0L, intervalMillis));
+            message.setSegmentSize(1024); message.setSegmentIntervalMillis(Math.max(0L, intervalMillis));
         }
-        try {
-            StaticObject.mTaskQueue.put(msg);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
+        if (!StaticObject.submitMessage(message)) {
+            postToView(() -> Toast.makeText(requireContext(), isConnected ? R.string.send_queue_full : R.string.no_connection,
+                    Toast.LENGTH_SHORT).show());
+            return null;
         }
+        return message;
+    }
+
+    private boolean awaitSend(Msg message, String expectedSession, long generation) throws InterruptedException {
+        while (message.getSendStatus() == null || !message.getSendStatus().isTerminal()) {
+            if (!StaticObject.foregroundGate.isCurrent(generation)
+                    || !java.util.Objects.equals(expectedSession, connectedSessionId)) throw new InterruptedException();
+            Thread.sleep(20);
+        }
+        return message.getSendStatus() == BluetoothSendStatus.SENT;
     }
 
     private void runDiagnostics() {
@@ -1136,6 +1198,13 @@ public class DebugFragment extends BaseFragment {
         lastDiagnosticsReport = buildDiagnosticsReport(deviceName, address, uuid, state, error,
                 reconnectAttempt, duration, sendStatus, sendCounts, sendError,
                 frameMode, textEncoding, connectionLogs);
+        long pendingBytes = StaticObject.mTaskQueue.getPendingBytes() + (connection == null ? 0 : connection.getPendingSendBytes())
+                + (logPipeline == null ? 0 : logPipeline.pendingBytes());
+        int pendingCount = StaticObject.mTaskQueue.size() + (connection == null ? 0 : connection.getPendingSendCount())
+                + (logPipeline == null ? 0 : logPipeline.pendingCount());
+        lastDiagnosticsReport += "\n" + getString(R.string.debug_queue_format, pendingCount,
+                pendingBytes + " B", HistoryRepository.getPendingCount(), StaticObject.getRejectedMessageCount()
+                        + (logPipeline == null ? 0 : logPipeline.rejectedCount()), HistoryRepository.getWriteFailureCount());
         binding.diagnosticsResult.setVisibility(View.VISIBLE);
         binding.diagnosticsResult.setText(lastDiagnosticsReport);
     }
@@ -1242,70 +1311,37 @@ public class DebugFragment extends BaseFragment {
     }
 
     private void exportLogs() {
-        if (adapter.getItemCount() == 0) {
-            Toast.makeText(getContext(), "No logs to export", Toast.LENGTH_SHORT).show();
-            return;
+        List<LogItem> logs = logPipeline == null ? Collections.emptyList() : logPipeline.snapshot();
+        if (logs.isEmpty()) {
+            Toast.makeText(getContext(), R.string.debug_no_logs, Toast.LENGTH_SHORT).show(); return;
         }
-
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault());
-        String filename = "bluetooth_debug_" + sdf.format(new Date()) + ".txt";
-
-        StringBuilder sb = new StringBuilder();
-        sb.append("Bluetooth Debug Log\n");
-        sb.append("Exported: ").append(sdf.format(new Date())).append("\n");
-        sb.append("Device: ").append(connectedDeviceName != null ? connectedDeviceName : "N/A").append("\n");
-        sb.append("Address: ").append(connectedDeviceAddress != null ? connectedDeviceAddress : "N/A").append("\n");
-        sb.append("---\n\n");
-
-        for (LogItem item : adapter.getLogs()) {
-            String dir = item.isSent() ? "SEND" : "RECV";
-            sb.append("[").append(item.getTimestamp()).append("] ").append(dir).append("\n");
-            sb.append("HEX: ").append(item.getHexContent()).append("\n");
-            sb.append("ASCII: ").append(item.getContent()).append("\n\n");
-        }
-
-        pendingLogExport = sb.toString();
-        Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT)
-                .addCategory(Intent.CATEGORY_OPENABLE)
-                .setType("text/plain")
-                .putExtra(Intent.EXTRA_TITLE, filename);
-        startActivityForResult(intent, REQUEST_EXPORT_LOGS);
-    }
-
-    private void writeLogExport(Uri uri) {
-        String content = pendingLogExport;
-        pendingLogExport = null;
-        if (content == null) {
-            return;
-        }
-        try (OutputStream output = requireContext().getContentResolver().openOutputStream(uri)) {
-            if (output == null) {
-                throw new IllegalStateException("unable to open export destination");
-            }
-            output.write(content.getBytes(StandardCharsets.UTF_8));
-            BluetoothTelemetry.logUserAction("log_exported");
-            Toast.makeText(getContext(), R.string.log_exported, Toast.LENGTH_SHORT).show();
-        } catch (Exception e) {
-            Toast.makeText(getContext(), R.string.export_failed, Toast.LENGTH_SHORT).show();
+        String filename = "bluetooth_debug_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date()) + ".txt";
+        if (!transferState.prepareLogs(requireContext(), filename, logs, connectedDeviceName, connectedDeviceAddress)) {
+            Toast.makeText(getContext(), R.string.debug_file_busy, Toast.LENGTH_SHORT).show();
         }
     }
 
     @Override
     public void onDestroyView() {
         super.onDestroyView();
-        timerHandler.removeCallbacks(timerRunnable);
+        if (timerHandler != null) timerHandler.removeCallbacks(timerRunnable);
         if (macroExecutor != null) {
             macroExecutor.close();
             macroExecutor = null;
         }
+        if (macroSendBatch != null) { macroSendBatch.cancel(); macroSendBatch = null; }
         stopSend();
 
         if (debugUUID != null) {
             StaticObject.bluetoothEvent.deleteAllEventByUuid(debugUUID);
         }
         attachSendProgressListener(null);
-        pendingMacroExport = null;
-        pendingLogExport = null;
+        viewEpoch++;
+        macroState.load(null);
+        isConnected = false;
+        connectedSessionId = null;
+        logUi.removeCallbacks(flushLogs);
+        if (logPipeline != null) { logPipeline.close(); logPipeline = null; }
 
         binding = null;
     }

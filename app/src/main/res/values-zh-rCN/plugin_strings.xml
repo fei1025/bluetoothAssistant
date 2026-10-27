@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="plugin_center">插件中心</string>
+    <string name="plugin_back">返回</string>
+    <string name="plugin_import">导入插件文件</string>
+    <string name="plugin_download_url">从 HTTPS 地址下载</string>
+    <string name="plugin_refresh">刷新官方目录</string>
+    <string name="plugin_example_classic">安装官方 SPP 示例</string>
+    <string name="plugin_example_ble">安装官方 BLE 示例</string>
+    <string name="plugin_installed">已安装插件</string>
+    <string name="plugin_catalogue">官方在线目录</string>
+    <string name="plugin_empty">尚未安装插件，可以先安装官方示例。</string>
+    <string name="plugin_details">详情与管理</string>
+    <string name="plugin_run">运行插件</string>
+    <string name="plugin_install">安装</string>
+    <string name="plugin_update">更新</string>
+    <string name="plugin_uninstall">卸载插件</string>
+    <string name="plugin_clear_data">清除配置</string>
+    <string name="plugin_stop">停止插件</string>
+    <string name="plugin_disconnect">断开连接</string>
+    <string name="plugin_revoke">撤销授权</string>
+    <string name="plugin_loading">正在加载插件…</string>
+    <string name="plugin_revoked">授权已撤销，连接已断开。再次使用时需要重新授权。</string>
+    <string name="plugin_operation_ok">操作完成</string>
+    <string name="plugin_operation_error">操作未完成（%1$s）。现有插件和配置会保留。</string>
+    <string name="plugin_developer_mode">开发构建：允许调试未经审核的插件。请仅运行可信代码。</string>
+    <string name="plugin_install_notice">插件可在授权后扫描和控制蓝牙设备。正式版仅接受审核签名通过的插件。</string>
+    <string name="plugin_update_notice">确认安装此版本？插件原有配置会保留，新增能力需要重新授权。</string>
+    <string name="plugin_uninstall_notice">卸载插件并撤销授权，保留插件配置。确定继续？</string>
+    <string name="plugin_clear_notice">将删除此插件保存的配置并撤销授权，此操作无法撤销。确定继续？</string>
+    <string name="plugin_detail_text">标识：%1$s
+作者：%2$s
+版本：%3$d
+申请能力：
+%4$s
+作者公钥指纹：%5$s</string>
+    <string name="plugin_authorize">允许插件使用蓝牙？</string>
+    <string name="plugin_authorize_text">%1$s 请求以下能力：
+%2$s
+设备信息和收发数据供此插件在本机处理。你可以随时停止插件或撤销授权。</string>
+    <string name="plugin_device_authorize">允许连接此设备？</string>
+    <string name="plugin_device_authorize_text">%1$s 请求连接 %2$s 设备 %3$s，并在已授权范围内读取和写入数据。</string>
+    <string name="plugin_cap_classic_scan">查询已配对设备、扫描经典蓝牙设备</string>
+    <string name="plugin_cap_classic_connect">连接和断开经典蓝牙设备</string>
+    <string name="plugin_cap_classic_io">读取和发送经典蓝牙原始字节</string>
+    <string name="plugin_cap_ble_scan">扫描 BLE 设备并查看广播信息</string>
+    <string name="plugin_cap_ble_connect">连接和断开 BLE 设备</string>
+    <string name="plugin_cap_ble_gatt">读取、写入和订阅 BLE 特征，查询 MTU 和信号强度</string>
+    <string name="plugin_webview_update">当前系统 WebView 不支持插件所需的安全接口，请更新 Android System WebView 或 Chrome。</string>
+    <string name="plugin_unresponsive">插件已停止：页面无响应或资源校验失败，蓝牙连接已清理。</string>
+    <string name="plugin_device_busy">设备由插件占用，请先停止插件。</string>
+</resources>

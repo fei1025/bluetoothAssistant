@@ -1,140 +1,136 @@
 package com.zzf.bluetoothsmp.customAdapter;
 
-import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.util.LruCache;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.ImageView;
-import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import com.zzf.bluetoothsmp.R;
-import com.zzf.bluetoothsmp.BluetoothObject;
-import com.zzf.bluetoothsmp.Liao_tian;
-import com.zzf.bluetoothsmp.MyApplication;
-import com.zzf.bluetoothsmp.entity.BluetoothDrive;
-import com.zzf.bluetoothsmp.liaoTian.Liantian_new;
-import com.zzf.bluetoothsmp.utils.DateUtils;
-import com.zzf.bluetoothsmp.utils.ImageUtils;
-import com.zzf.bluetoothsmp.utils.ToastUtil;
-
-import java.util.List;
-
 import androidx.annotation.NonNull;
-import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.recyclerview.widget.DiffUtil;
+import androidx.recyclerview.widget.ListAdapter;
 import androidx.recyclerview.widget.RecyclerView;
 
-//https://github.com/mcxtzhang/SwipeDelMenuLayout 右滑删除
-public class InfoAdapter extends RecyclerView.Adapter<InfoAdapter.ViewHolder> {
+import com.zzf.bluetoothsmp.Liao_tian;
+import com.zzf.bluetoothsmp.R;
+import com.zzf.bluetoothsmp.entity.BluetoothDrive;
+import com.zzf.bluetoothsmp.utils.DateUtils;
+import com.zzf.bluetoothsmp.utils.ImageUtils;
 
-    private List<BluetoothDrive> list;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
 
-    public InfoAdapter(List<BluetoothDrive> msgList) {
-        list = msgList;
+public class InfoAdapter extends ListAdapter<BluetoothDrive, InfoAdapter.ViewHolder> {
+    private final LruCache<String, Bitmap> avatars = new LruCache<>(24);
+    private final Set<String> deleting = new HashSet<>();
+    private OnClickDelete onClickDelete;
+
+    private static final DiffUtil.ItemCallback<BluetoothDrive> DIFFER = new DiffUtil.ItemCallback<BluetoothDrive>() {
+        @Override public boolean areItemsTheSame(@NonNull BluetoothDrive a, @NonNull BluetoothDrive b) {
+            return Objects.equals(a.getDriveAdd(), b.getDriveAdd()) && Objects.equals(a.getUuid(), b.getUuid());
+        }
+        @Override public boolean areContentsTheSame(@NonNull BluetoothDrive a, @NonNull BluetoothDrive b) {
+            return Objects.equals(a.getDriveName(), b.getDriveName())
+                    && Objects.equals(a.getLastReceiveMsg(), b.getLastReceiveMsg())
+                    && Objects.equals(a.getSenDate(), b.getSenDate());
+        }
+    };
+
+    public InfoAdapter(List<BluetoothDrive> rows) {
+        super(DIFFER);
+        submitList(new ArrayList<>(rows));
     }
+
+    public void setDeleting(BluetoothDrive drive, boolean active) {
+        String key = key(drive);
+        if (active) deleting.add(key); else deleting.remove(key);
+        for (int i = 0; i < getCurrentList().size(); i++) {
+            if (key.equals(key(getCurrentList().get(i)))) notifyItemChanged(i);
+        }
+    }
+
+    public void clearPendingDeletes() {
+        if (!deleting.isEmpty()) {
+            deleting.clear();
+            notifyDataSetChanged();
+        }
+    }
+
+    private String key(BluetoothDrive drive) { return drive.getDriveAdd() + "\n" + String.valueOf(drive.getUuid()); }
 
     @NonNull
     @Override
-    public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View inflate = LayoutInflater.from(parent.getContext()).inflate(R.layout.info_item, parent, false);
-        return new ViewHolder(inflate);
+    public ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int type) {
+        return new ViewHolder(LayoutInflater.from(parent.getContext()).inflate(R.layout.info_item, parent, false));
     }
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        BluetoothDrive bluetoothDrive = list.get(position);
-        Bitmap systemImg = bluetoothDrive.getSystemImg();
-        if(systemImg == null){
-            systemImg= ImageUtils.defaultAvatar(bluetoothDrive.getDriveName());
+        BluetoothDrive drive = getItem(position);
+        String name = drive.getDriveName();
+        if (name == null || name.trim().isEmpty()) name = drive.getDriveAdd();
+        String avatarKey = key(drive) + "|" + name;
+        Bitmap avatar = drive.getSystemImg();
+        if (avatar == null) {
+            avatar = avatars.get(avatarKey);
+            if (avatar == null) {
+                avatar = ImageUtils.defaultAvatar(name);
+                avatars.put(avatarKey, avatar);
+            }
         }
-        holder.img1.setImageBitmap(systemImg);
-        holder.content.setText(bluetoothDrive.getLastReceiveMsg());
-        holder.title.setText(bluetoothDrive.getDriveName());
-        holder.time.setText(DateUtils.dateToStr(bluetoothDrive.getSenDate()));
-        holder.mLinearLayout.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                //聊天记录
-                int adapterPosition = holder.getAdapterPosition();
-                BluetoothDrive bluetoothDrive1 = list.get(adapterPosition);
-                //Intent intent = new Intent(v.getContext(), Liantian_new.class);
-                Intent intent = new Intent(v.getContext(), Liao_tian.class);
-                intent.putExtra("bluetoothName",bluetoothDrive1.getDriveName());
-                intent.putExtra("bluetoothAdd",bluetoothDrive1.getDriveAdd());
-                intent.putExtra("bluetoothUUid",bluetoothDrive1.getUuid());
-                intent.putExtra("infoType","0");
-                BluetoothDrive drive=new BluetoothDrive();
-                drive.setDriveName(bluetoothDrive1.getDriveName());
-                drive.setDriveAdd(bluetoothDrive1.getDriveAdd());
-                drive.setUuid(bluetoothDrive1.getUuid());
-                intent.putExtra("BluetoothDrive",drive);
-                v.getContext().startActivity(intent);
-            }
+        holder.image.setImageBitmap(avatar);
+        holder.title.setText(name);
+        String content = drive.getLastReceiveMsg();
+        holder.content.setText(content == null ? "" : content.substring(0, Math.min(content.length(), 256)));
+        holder.time.setText(drive.getSenDate() == null ? "" : DateUtils.dateToStr(drive.getSenDate()));
+        holder.delete.setEnabled(!deleting.contains(key(drive)));
+        holder.contentView.setOnClickListener(view -> {
+            int currentPosition = holder.getBindingAdapterPosition();
+            if (currentPosition == RecyclerView.NO_POSITION) return;
+            BluetoothDrive current = getItem(currentPosition);
+            Intent intent = new Intent(view.getContext(), Liao_tian.class);
+            intent.putExtra("bluetoothName", current.getDriveName());
+            intent.putExtra("bluetoothAdd", current.getDriveAdd());
+            intent.putExtra("bluetoothUUid", current.getUuid());
+            view.getContext().startActivity(intent);
         });
-
-/*        holder.mLinearLayout.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View v) {
-                int adapterPosition = holder.getAdapterPosition();
-                BluetoothDrive bluetoothDrive1 = list.get(adapterPosition);
-                ToastUtil.toastWord(v.getContext(), "长按了");
-                return true;
-            }
-        });*/
-        holder.itemDelete.setOnClickListener(new View.OnClickListener() {
-            @SuppressLint("NotifyDataSetChanged")
-            @Override
-            public void onClick(View v) {
-                int adapterPosition = holder.getAdapterPosition();
-                BluetoothDrive remove = list.remove(adapterPosition);
-                notifyDataSetChanged();
-                onClickDelete.deleteItem(adapterPosition,remove);
+        holder.delete.setOnClickListener(view -> {
+            int currentPosition = holder.getBindingAdapterPosition();
+            if (currentPosition != RecyclerView.NO_POSITION && onClickDelete != null) {
+                BluetoothDrive current = getItem(currentPosition);
+                if (!deleting.contains(key(current))) onClickDelete.deleteItem(currentPosition, current);
             }
         });
     }
 
+    public void setOnClickDelete(OnClickDelete listener) { onClickDelete = listener; }
 
-    @Override
-    public int getItemCount() {
-        return list.size();
+    public interface OnClickDelete {
+        void deleteItem(int position, BluetoothDrive drive);
     }
 
     public static class ViewHolder extends RecyclerView.ViewHolder {
-        ConstraintLayout mLinearLayout;
-        View fruitView;
-        ImageView img1;
-        TextView title;
-        TextView time;
-        TextView content;
-        Button itemDelete;
-
-
-        public ViewHolder(@NonNull View itemView) {
-            super(itemView);
-            fruitView=itemView;
-            mLinearLayout = itemView.findViewById(R.id.LayoutId);
-            img1 = itemView.findViewById(R.id.img1);
-            title = itemView.findViewById(R.id.title);
-            content = itemView.findViewById(R.id.content);
-            time = itemView.findViewById(R.id.time);
-            itemDelete = itemView.findViewById(R.id.item_delete);
-
+        final View contentView;
+        final ImageView image;
+        final TextView title;
+        final TextView content;
+        final TextView time;
+        final Button delete;
+        public ViewHolder(View view) {
+            super(view);
+            contentView = view.findViewById(R.id.LayoutId);
+            image = view.findViewById(R.id.img1);
+            title = view.findViewById(R.id.title);
+            content = view.findViewById(R.id.content);
+            time = view.findViewById(R.id.time);
+            delete = view.findViewById(R.id.item_delete);
         }
     }
-
-    private OnClickDelete onClickDelete;
-
-    public void setOnClickDelete(OnClickDelete onClickDelete) {
-        this.onClickDelete = onClickDelete;
-    }
-
-    public interface OnClickDelete{
-        void deleteItem(int adapterPosition,  BluetoothDrive remove);
-    }
-
-
-
 }

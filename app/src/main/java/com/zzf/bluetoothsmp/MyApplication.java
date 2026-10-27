@@ -3,10 +3,15 @@ package com.zzf.bluetoothsmp;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.Application;
+import android.app.KeyguardManager;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.pm.ApplicationInfo;
 import android.os.Bundle;
+import android.os.PowerManager;
 
-import com.google.firebase.analytics.FirebaseAnalytics;
 import com.zzf.bluetoothsmp.entity.KeyboardEntity;
 import com.zzf.bluetoothsmp.entity.MessageMapper;
 import com.zzf.bluetoothsmp.utils.LanguageUtils;
@@ -15,30 +20,46 @@ import org.litepal.LitePal;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.core.content.ContextCompat;
 
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class MyApplication  extends Application {
     @SuppressLint("StaticFieldLeak")
     private static Context context;
     private static Application mApplication;
-    private FirebaseAnalytics mFirebaseAnalytics;
-    private static final AtomicInteger startedActivities = new AtomicInteger();
 
     @Override
     public void onCreate() {
         super.onCreate();
         context=getApplicationContext();
+        LanguageUtils.initialize(this);
         LitePal.initialize(this);
+        com.zzf.bluetoothsmp.utils.HistoryRepository.initializeRetention(this);
         mApplication = this;
         StaticObject.reconnectManager.initialize(this);
 
         registerActivityLifecycleCallbacks();
-        mFirebaseAnalytics = FirebaseAnalytics.getInstance(this);
-        mFirebaseAnalytics.setAnalyticsCollectionEnabled(true);
-        BluetoothTelemetry.initialize(this);
+        IntentFilter screenFilter = new IntentFilter();
+        screenFilter.addAction(Intent.ACTION_SCREEN_OFF);
+        screenFilter.addAction(Intent.ACTION_SCREEN_ON);
+        screenFilter.addAction(Intent.ACTION_USER_PRESENT);
+        ContextCompat.registerReceiver(this, new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context receiverContext, Intent intent) {
+                if (Intent.ACTION_SCREEN_OFF.equals(intent.getAction())) {
+                    StaticObject.foregroundGate.screenUnavailable();
+                    StaticObject.suspendForegroundBluetooth(MyApplication.this);
+                } else {
+                    resumeIfScreenAvailable();
+                }
+            }
+        }, screenFilter, ContextCompat.RECEIVER_NOT_EXPORTED);
+        // Local debug/test runs share the production package name, so they must not
+        // contaminate production Analytics or Crashlytics reports.
+        boolean debuggable = (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        BluetoothTelemetry.initialize(this, !debuggable && !BuildConfig.OFFLINE_AUDIT);
     }
 
 
@@ -53,18 +74,18 @@ public class MyApplication  extends Application {
 
             @Override
             public void onActivityStarted(@NonNull Activity activity) {
-                startedActivities.incrementAndGet();
+                StaticObject.foregroundGate.activityStarted(isScreenAvailable());
+                StaticObject.resumeForegroundBluetooth(activity);
             }
 
             @Override
             public void onActivityResumed(@NonNull Activity activity) {
                 if (!BluetoothPermissionUtils.hasConnectPermission(activity)) {
-                    // Permission revocation can happen while a chat Activity or the
-                    // foreground service is alive. Close transport resources before
-                    // the next write/read reaches a platform SecurityException.
-                    StaticObject.closeAllConnections(true);
+                    // Permission revocation can happen while a chat Activity is alive.
                     StaticObject.stopBluetoothService();
-                    BluetoothConnectionForegroundService.stop(activity);
+                    StaticObject.closeAllConnections(true);
+                } else {
+                    resumeIfScreenAvailable();
                 }
             }
 
@@ -75,9 +96,10 @@ public class MyApplication  extends Application {
 
             @Override
             public void onActivityStopped(@NonNull Activity activity) {
-                int remaining = startedActivities.decrementAndGet();
-                if (remaining < 0) {
-                    startedActivities.set(0);
+                boolean wasActive = StaticObject.foregroundGate.isActive();
+                StaticObject.foregroundGate.activityStopped(activity.isChangingConfigurations());
+                if (wasActive && !StaticObject.foregroundGate.isActive()) {
+                    StaticObject.suspendForegroundBluetooth(activity);
                 }
             }
 
@@ -94,13 +116,30 @@ public class MyApplication  extends Application {
     }
 
     public static Context getAppContext() {
-        return mApplication;
+        return LanguageUtils.localizedContext(mApplication);
     }
     public static Context getContext(){
-        return context;
+        return LanguageUtils.localizedContext(context);
     }
 
     public static boolean isAppInForeground() {
-        return startedActivities.get() > 0;
+        return StaticObject.foregroundGate.isActive();
+    }
+
+    private boolean isScreenAvailable() {
+        PowerManager power = (PowerManager) getSystemService(POWER_SERVICE);
+        KeyguardManager keyguard = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
+        return power != null && power.isInteractive()
+                && (keyguard == null || !keyguard.isKeyguardLocked());
+    }
+
+    private void resumeIfScreenAvailable() {
+        if (isScreenAvailable()) {
+            StaticObject.foregroundGate.screenAvailable();
+            StaticObject.resumeForegroundBluetooth(this);
+        } else if (StaticObject.foregroundGate.isActive()) {
+            StaticObject.foregroundGate.screenUnavailable();
+            StaticObject.suspendForegroundBluetooth(this);
+        }
     }
 }

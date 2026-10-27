@@ -1,220 +1,427 @@
 package com.zzf.bluetoothsmp.liaoTian;
 
 import android.annotation.SuppressLint;
-import android.content.DialogInterface;
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.os.Bundle;
-import android.text.Editable;
-import android.util.DisplayMetrics;
-import android.util.Log;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewConfiguration;
 import android.widget.Button;
-import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.ScrollView;
 import android.widget.ToggleButton;
 
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
-import androidx.constraintlayout.widget.ConstraintLayout;
-import androidx.constraintlayout.widget.ConstraintSet;
+import androidx.appcompat.widget.AppCompatButton;
 import androidx.fragment.app.Fragment;
 
+import com.zzf.bluetoothsmp.BluetoothTelemetry;
+import com.zzf.bluetoothsmp.KeyboardSlotResolver;
+import com.zzf.bluetoothsmp.KeyboardLayoutState;
 import com.zzf.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.entity.BluetoothDrive;
 import com.zzf.bluetoothsmp.entity.KeyboardEntity;
 import com.zzf.bluetoothsmp.utils.StringUtils;
+import android.widget.Toast;
 
 import org.litepal.LitePal;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class KeyboardFragment extends Fragment {
-
-    private String TAG = "KeyboardFragment";
-    private String defaultAdd = "defaultAdd";
-
-    private String demo = "demo";
-    BluetoothDrive drive;
-    ToggleButton toggle;
+    private BluetoothDrive drive;
+    private ToggleButton toggle;
     private Liantian_new liantian_new;
-    Map<Integer, KeyboardEntity> keymap = null;
+    private Map<Integer, KeyboardEntity> deviceKeys = Collections.emptyMap();
+    private Map<Integer, KeyboardEntity> defaultKeys = Collections.emptyMap();
+    private final Map<Integer, String> pendingReleases = new HashMap<>();
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private final ExecutorService database = Executors.newSingleThreadExecutor();
+    private View currentRoot;
+    private int viewGeneration;
+    private KeyboardCanvas canvas;
+    private Button addButton;
+    private SharedPreferences layoutPreferences;
+    private KeyboardLayoutState layoutState;
+    private boolean savingLayout;
+    private int editingTouchSlot;
+    private AlertDialog editorDialog;
 
     public KeyboardFragment() {
     }
 
-    public View onCreateView(@NonNull LayoutInflater inflater,
-                             ViewGroup container, Bundle savedInstanceState) {
-        liantian_new = (Liantian_new) getActivity();
+    @Override
+    public void onResume() {
+        super.onResume();
+        BluetoothTelemetry.logScreenView("keyboard", getClass().getSimpleName());
+    }
+
+    @Override
+    public View onCreateView(LayoutInflater inflater, ViewGroup container,
+                             Bundle savedInstanceState) {
+        liantian_new = (Liantian_new) requireActivity();
         drive = liantian_new.getDrive();
         View root = inflater.inflate(R.layout.frament_keyboard_moder, container, false);
+        currentRoot = root;
+        viewGeneration++;
+        if (drive == null || drive.getDriveAdd() == null) return root;
         initData(root);
         return root;
     }
 
-    public void longClick(Button button) {
-        showDialog(button);
+    private KeyboardEntity effectiveKey(int slot) {
+        return KeyboardSlotResolver.effectiveForSlot(slot, deviceKeys, defaultKeys);
     }
 
+    private Map<Integer, KeyboardEntity> loadKeys(String address) {
+        List<KeyboardEntity> rows = LitePal.where("driveAdd = ?", address)
+                .find(KeyboardEntity.class);
+        // Resolve legacy IDs in memory. Opening this page must not rewrite old
+        // rows, duplicate records or payloads; writes require an explicit edit.
+        return KeyboardSlotResolver.selectForAddress(rows, address);
+    }
 
-    private void showDialog(Button v) {
-        LayoutInflater layoutInflater = LayoutInflater.from(getContext());
-        View dialogView = layoutInflater.inflate(R.layout.dialog_layout, null);
-        KeyboardEntity m = LitePal.where(" driveAdd =? and buttonId =?", drive.getDriveAdd(), v.getId() + "").findFirst(KeyboardEntity.class);
-        EditText editText_button = dialogView.findViewById(R.id.editText_button);
-        editText_button.setHint(getString(R.string.PleaseEnterButtonName));
-        EditText editText2 = dialogView.findViewById(R.id.editText_down);
-        editText2.setHint(getString(R.string.PleaseEnterSenMsg));
-        EditText editText3 = dialogView.findViewById(R.id.editText_up);
-        editText3.setHint(getString(R.string.UpEnterSenMsg));
-        if (m != null) {
-            String buttonName = m.getButtonName();
-            if (StringUtils.isNotEmpty(buttonName)) {
-                editText_button.setText(buttonName);
-            }
-            String actionDown = m.getActionDown();
-
-            if (StringUtils.isNotEmpty(actionDown)) {
-                editText2.setText(actionDown);
-            }
-            String actionUp = m.getActionUp();
-            editText3.setText(actionUp);
-
+    private void showDialog(Button button, int slot) {
+        if (editorDialog != null && editorDialog.isShowing()) return;
+        View dialogView = LayoutInflater.from(requireContext())
+                .inflate(R.layout.dialog_layout, null);
+        EditText nameInput = dialogView.findViewById(R.id.editText_button);
+        EditText downInput = dialogView.findViewById(R.id.editText_down);
+        EditText upInput = dialogView.findViewById(R.id.editText_up);
+        nameInput.setHint(getString(R.string.PleaseEnterButtonName));
+        downInput.setHint(getString(R.string.PleaseEnterSenMsg));
+        upInput.setHint(getString(R.string.UpEnterSenMsg));
+        KeyboardEntity effective = effectiveKey(slot);
+        if (effective != null) {
+            nameInput.setText(effective.getButtonName());
+            downInput.setText(effective.getActionDown());
+            upInput.setText(effective.getActionUp());
         }
 
-        AlertDialog.Builder builder = new AlertDialog.Builder(requireContext());
-        builder.setView(dialogView)
-                .setPositiveButton(getString(R.string.confirm), new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        int id = v.getId();
-                        KeyboardEntity m = LitePal.where(" driveAdd =? and buttonId =?", drive.getDriveAdd(), id + "").findFirst(KeyboardEntity.class);
-                        if (m == null) {
-                            m = new KeyboardEntity();
-                            m.setDriveAdd(drive.getDriveAdd());
-                            m.setButtonId(id);
-                        }
-                        // do something
-                        String Text_button = editText_button.getText().toString();
-                        if (Text_button.length() != 0) {
-                            m.setButtonName(Text_button);
-                            v.setText(Text_button);
-                        }
-                        Editable text = editText2.getText();
-                        m.setActionDown(text.toString());
-                        Editable text1 = editText3.getText();
-                        m.setActionUp(text1.toString());
-                        keymap.put(id, m);
-                        m.save();
+        AlertDialog dialog = new AlertDialog.Builder(requireContext())
+                .setView(dialogView)
+                .setPositiveButton(getString(R.string.confirm), null)
+                .setNegativeButton(getString(R.string.cancel),
+                        (ignored, which) -> ignored.dismiss())
+                .create();
+        editorDialog = dialog;
+        dialog.setOnDismissListener(ignored -> {
+            if (editorDialog == dialog) editorDialog = null;
+        });
+        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(view -> {
+            KeyboardEntity own = deviceKeys.get(slot);
+            if (own == null) {
+                // The inputs contain any default fallback. Save a new device row
+                // rather than moving or overwriting that shared default entity.
+                own = new KeyboardEntity();
+                own.setDriveAdd(drive.getDriveAdd());
+            }
+            final int previousId = own.getButtonId();
+            final String previousName = own.getButtonName();
+            final String previousDown = own.getActionDown();
+            final String previousUp = own.getActionUp();
+            own.setButtonId(slot);
+            own.setButtonName(nameInput.getText().toString());
+            own.setActionDown(downInput.getText().toString());
+            own.setActionUp(upInput.getText().toString());
+            final KeyboardEntity savedRow = own;
+            final int generation = viewGeneration;
+            dialog.setCancelable(false);
+            dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(false);
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+            database.execute(() -> {
+                boolean success;
+                try { success = savedRow.save(); }
+                catch (RuntimeException error) { success = false; }
+                final boolean stored = success;
+                main.post(() -> {
+                    if (generation != viewGeneration || currentRoot == null) return;
+                    dialog.setCancelable(true);
+                    dialog.getButton(AlertDialog.BUTTON_NEGATIVE).setEnabled(true);
+                    dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true);
+                    if (!stored) {
+                        savedRow.setButtonId(previousId);
+                        savedRow.setButtonName(previousName);
+                        savedRow.setActionDown(previousDown);
+                        savedRow.setActionUp(previousUp);
+                        Toast.makeText(requireContext(), R.string.keyboard_save_failed, Toast.LENGTH_SHORT).show();
+                        return;
                     }
-                })
-                .setNegativeButton(getString(R.string.cancel), new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        dialog.dismiss();
+                    deviceKeys.put(slot, savedRow);
+                    applyLabel(button, slot, savedRow);
+                    dialog.dismiss();
+                });
+            });
+        });
+    }
+
+    private void applyLabel(Button button, int slot, KeyboardEntity key) {
+        String name = key == null ? null : key.getButtonName();
+        button.setText(StringUtils.isNotEmpty(name) ? name : getString(R.string.keyboard_button, slot));
+    }
+
+    private void initData(View root) {
+        deviceKeys = new HashMap<>();
+        defaultKeys = Collections.emptyMap();
+        savingLayout = false;
+        editingTouchSlot = 0;
+        canvas = root.findViewById(R.id.keyboard_canvas);
+        addButton = root.findViewById(R.id.keyboard_add);
+        layoutPreferences = requireContext().getApplicationContext()
+                .getSharedPreferences("keyboard_layouts", Context.MODE_PRIVATE);
+        toggle = root.findViewById(R.id.toggleButton);
+        toggle.setEnabled(false);
+        addButton.setEnabled(false);
+        toggle.setBackgroundTintList(ColorStateList.valueOf(
+                getResources().getColor(R.color.purple_700)));
+        toggle.setTextColor(getResources().getColor(R.color.white));
+        toggle.setOnCheckedChangeListener((buttonView, checked) -> {
+            releaseAll();
+            toggle.setTextColor(getResources().getColor(checked ? R.color.orange : R.color.white));
+            ((TextView) root.findViewById(R.id.keyboard_hint)).setText(
+                    checked ? R.string.keyboard_edit_hint : R.string.keyboard_use_hint);
+        });
+        addButton.setOnClickListener(view -> {
+            if (savingLayout || editingTouchSlot != 0 || editorDialog != null) return;
+            KeyboardLayoutState next = layoutState.copy();
+            Set<Integer> configured = new TreeSet<>(deviceKeys.keySet());
+            configured.addAll(defaultKeys.keySet());
+            int slot = next.add(configured);
+            if (slot == 0) {
+                Toast.makeText(requireContext(), getString(R.string.keyboard_limit,
+                        KeyboardLayoutState.MAX_BUTTONS), Toast.LENGTH_SHORT).show();
+                return;
+            }
+            releaseAll();
+            saveLayout(next, () -> {
+                renderButtons();
+                toggle.setChecked(true);
+                Button added = canvas.findViewWithTag(slot);
+                canvas.post(() -> {
+                    if (currentRoot != root) return;
+                    ((ScrollView) root.findViewById(R.id.keyboard_scroll)).smoothScrollTo(0, added.getTop());
+                    showDialog(added, slot);
+                });
+            });
+        });
+        final int generation = viewGeneration;
+        final String address = drive.getDriveAdd();
+        final SharedPreferences preferences = layoutPreferences;
+        database.execute(() -> {
+            try {
+                Map<Integer, KeyboardEntity> own = loadKeys(address);
+                Map<Integer, KeyboardEntity> defaults = KeyboardSlotResolver.DEFAULT_ADDRESS.equals(address)
+                        ? Collections.emptyMap() : loadKeys(KeyboardSlotResolver.DEFAULT_ADDRESS);
+                Set<Integer> slots = new TreeSet<>(own.keySet());
+                slots.addAll(defaults.keySet());
+                KeyboardLayoutState loaded = KeyboardLayoutState.restore(preferences.getString(address, null), slots);
+                main.post(() -> {
+                    if (generation != viewGeneration || currentRoot == null) return;
+                    deviceKeys = new HashMap<>(own);
+                    defaultKeys = defaults;
+                    layoutState = loaded;
+                    toggle.setEnabled(true);
+                    addButton.setEnabled(true);
+                    renderButtons();
+                });
+            } catch (RuntimeException error) {
+                main.post(() -> {
+                    if (generation == viewGeneration && currentRoot != null) {
+                        Toast.makeText(requireContext(), R.string.history_load_failed, Toast.LENGTH_SHORT).show();
                     }
                 });
-        AlertDialog alertDialog = builder.create();
-        alertDialog.show();
+            }
+        });
+    }
+
+    private void saveLayout(KeyboardLayoutState next, Runnable onSaved) {
+        savingLayout = true;
+        toggle.setEnabled(false);
+        addButton.setEnabled(false);
+        final int generation = viewGeneration;
+        final String address = drive.getDriveAdd();
+        final SharedPreferences preferences = layoutPreferences;
+        final String encoded = next.encode();
+        database.execute(() -> {
+            boolean stored;
+            try { stored = preferences.edit().putString(address, encoded).commit(); }
+            catch (RuntimeException error) { stored = false; }
+            final boolean success = stored;
+            main.post(() -> {
+                if (generation != viewGeneration || currentRoot == null) return;
+                savingLayout = false;
+                toggle.setEnabled(true);
+                addButton.setEnabled(true);
+                if (success) {
+                    layoutState = next;
+                    canvas.setState(layoutState);
+                    onSaved.run();
+                } else {
+                    canvas.setState(layoutState);
+                    Toast.makeText(requireContext(), R.string.keyboard_save_failed, Toast.LENGTH_SHORT).show();
+                }
+            });
+        });
+    }
+
+    private void renderButtons() {
+        canvas.removeAllViews();
+        canvas.setState(layoutState);
+        for (int slot : layoutState.buttons().keySet()) {
+            AppCompatButton button = new AppCompatButton(requireContext());
+            button.setId(slot == 1 ? R.id.button1 : View.generateViewId());
+            button.setTag(slot);
+            button.setAllCaps(false);
+            applyLabel(button, slot, effectiveKey(slot));
+            bindButton(button, slot);
+            canvas.addView(button);
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")
-    private void initData(View root) {
-        DisplayMetrics displayMetrics = new DisplayMetrics();
-        getActivity().getWindowManager().getDefaultDisplay().getMetrics(displayMetrics);
-
-        int heightPixels = displayMetrics.heightPixels; // 屏幕高度（像素）
-
-
-        keymap = new HashMap<>();
-        List<KeyboardEntity> messageList = LitePal.where(" driveAdd =?", drive.getDriveAdd()).find(KeyboardEntity.class);
-        for (int i = 1; i <= 12; i++) {
-            int resID = getResources().getIdentifier("button" + i, "id", getActivity().getPackageName());
-            if (messageList == null || messageList.size() == 0) {
-                KeyboardEntity m = new KeyboardEntity();
-                m.setDriveAdd(defaultAdd);
-                m.setButtonId(resID);
-                m.save();
+    private void bindButton(Button button, int slot) {
+        final boolean[] touchClick = {false};
+        button.setOnClickListener(view -> {
+            if (touchClick[0] || savingLayout || editingTouchSlot != 0) return;
+            if (toggle.isChecked()) showDialog(button, slot);
+            else {
+                press(slot);
+                release(slot);
             }
+        });
+        button.setOnTouchListener(new View.OnTouchListener() {
+            private float downX, downY, originalX, originalY;
+            private boolean editing, dragging;
+            private int pointerId = -1;
+            private final int slop = ViewConfiguration.get(requireContext()).getScaledTouchSlop();
 
-            Button button = root.findViewById(resID);
-            //动态计算按钮高度
-            int h = heightPixels / 4 - 170;
-            ConstraintSet constraintSet = new ConstraintSet();
-            constraintSet.clone((ConstraintLayout) button.getParent());
-            constraintSet.constrainHeight(button.getId(), (int) h);
-            constraintSet.applyTo((ConstraintLayout) button.getParent());
-            int id = button.getId();
-            KeyboardEntity first = LitePal.where(" driveAdd =? and buttonId =?", drive.getDriveAdd(), id + "").findFirst(KeyboardEntity.class);
-            if (first != null) {
-                String buttonName = first.getButtonName();
-                if (buttonName != null && buttonName.length() > 0) {
-                    button.setText(buttonName);
+            @Override public boolean onTouch(View view, MotionEvent event) {
+                int action = event.getActionMasked();
+                if (action == MotionEvent.ACTION_DOWN) {
+                    if (savingLayout || editorDialog != null || editingTouchSlot != 0) return true;
+                    pointerId = event.getPointerId(0);
+                    editing = toggle.isChecked();
+                    dragging = false;
+                    downX = event.getRawX();
+                    downY = event.getRawY();
+                    originalX = view.getX();
+                    originalY = view.getY();
+                    view.setPressed(true);
+                    if (editing) {
+                        editingTouchSlot = slot;
+                        toggle.setEnabled(false);
+                        addButton.setEnabled(false);
+                        view.getParent().requestDisallowInterceptTouchEvent(true);
+                    }
+                    else press(slot);
+                } else if (pointerId != -1 && action == MotionEvent.ACTION_MOVE && editing) {
+                    float dx = event.getRawX() - downX;
+                    float dy = event.getRawY() - downY;
+                    if (dx * dx + dy * dy > slop * slop) dragging = true;
+                    if (dragging) canvas.drag(view, originalX + dx, originalY + dy);
+                } else if (pointerId != -1 && (action == MotionEvent.ACTION_UP
+                        || action == MotionEvent.ACTION_CANCEL
+                        || (action == MotionEvent.ACTION_POINTER_UP
+                        && event.getPointerId(event.getActionIndex()) == pointerId))) {
+                    pointerId = -1;
+                    view.setPressed(false);
+                    if (editing) {
+                        editingTouchSlot = 0;
+                        toggle.setEnabled(true);
+                        addButton.setEnabled(true);
+                    }
+                    if (!editing) release(slot);
+                    if (editing && dragging && action == MotionEvent.ACTION_UP) {
+                        KeyboardLayoutState next = layoutState.copy();
+                        next.move(slot, canvas.capture(view));
+                        saveLayout(next, () -> { });
+                    } else if (editing && dragging) {
+                        canvas.setState(layoutState);
+                    } else if (action == MotionEvent.ACTION_UP) {
+                        touchClick[0] = !editing;
+                        try { view.performClick(); }
+                        finally { touchClick[0] = false; }
+                    }
+                    view.getParent().requestDisallowInterceptTouchEvent(false);
                 }
+                return true;
             }
-
-            keymap.put(id, first);
-            button.setOnTouchListener((view, event) -> {
-                if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                    boolean clickable = toggle.isChecked();
-                    if (clickable) {
-                        longClick(button);
-                        return true;
-                    }
-
-                    //Button按下事件
-                    KeyboardEntity keyboardEntity = keymap.get(view.getId());
-                    if (keyboardEntity != null&&StringUtils.isNotEmpty(keyboardEntity.getActionDown())) {
-                        liantian_new.senMsg(keyboardEntity.getActionDown());
-
-                    }
-
-                } else if (event.getAction() == MotionEvent.ACTION_UP) {
-                    boolean clickable = toggle.isChecked();
-                    if (clickable) {
-                        return true;
-                    }
-
-                    //Button抬起事件
-                    KeyboardEntity keyboardEntity = keymap.get(view.getId());
-                    if (keyboardEntity != null&&StringUtils.isNotEmpty(keyboardEntity.getActionUp())) {
-                        liantian_new.senMsg(keyboardEntity.getActionUp());
-                    }
-                }
-                return false;
-            });
-
-
-      /*      //监听按钮事件
-            button.setOnLongClickListener(new View.OnLongClickListener() {
-                @Override
-                public boolean onLongClick(View view) {
-                    longClick(button);
-                    return true;
-                }
-            });*/
-            toggle = (ToggleButton) root.findViewById(R.id.toggleButton);
-            toggle.setBackgroundTintList(ColorStateList.valueOf(getResources().getColor(R.color.purple_700)));
-            toggle.setTextColor(getResources().getColor(R.color.white));
-            toggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                    if (isChecked) {
-                        toggle.setTextColor(getResources().getColor(R.color.orange));
-                    } else {
-                        toggle.setTextColor(getResources().getColor(R.color.white));
-                    }
-                }
-            });
-
-        }
-
+        });
     }
 
+    private void releaseAll() {
+        for (Integer slot : new java.util.ArrayList<>(pendingReleases.keySet())) release(slot);
+    }
 
+    private void cancelTouches() {
+        if (canvas == null) return;
+        long now = android.os.SystemClock.uptimeMillis();
+        MotionEvent cancel = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0, 0, 0);
+        try {
+            for (int i = 0; i < canvas.getChildCount(); i++) canvas.getChildAt(i).dispatchTouchEvent(cancel);
+        } finally {
+            cancel.recycle();
+        }
+        canvas.setState(layoutState);
+    }
+
+    private void press(int slot) {
+        if (pendingReleases.containsKey(slot)) return;
+        KeyboardEntity key = effectiveKey(slot);
+        if (key == null) return;
+        String down = key.getActionDown();
+        if (StringUtils.isNotEmpty(down) && !liantian_new.sendText(down)) return;
+        pendingReleases.put(slot, key.getActionUp());
+    }
+
+    private void release(int slot) {
+        if (!pendingReleases.containsKey(slot)) return;
+        String up = pendingReleases.remove(slot);
+        if (StringUtils.isNotEmpty(up)) liantian_new.sendText(up);
+    }
+
+    @Override
+    public void onPause() {
+        cancelTouches();
+        releaseAll();
+        super.onPause();
+    }
+
+    @Override
+    public void onDestroyView() {
+        cancelTouches();
+        viewGeneration++;
+        if (editorDialog != null) {
+            editorDialog.dismiss();
+            editorDialog = null;
+        }
+        releaseAll();
+        currentRoot = null;
+        canvas = null;
+        addButton = null;
+        toggle = null;
+        main.removeCallbacksAndMessages(null);
+        super.onDestroyView();
+    }
+
+    @Override
+    public void onDestroy() {
+        database.shutdown();
+        super.onDestroy();
+    }
 }

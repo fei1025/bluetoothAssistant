@@ -17,6 +17,7 @@
             android:orientation="vertical"
             android:layout_width="match_parent"
             android:layout_height="match_parent">
+            <include layout="@layout/chat_transcript_controls" />
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/msg_recycler_view"
                 android:layout_width="match_parent"

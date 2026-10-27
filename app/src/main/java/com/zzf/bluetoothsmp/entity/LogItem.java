@@ -16,13 +16,33 @@ public class LogItem {
     private Date timestamp;
     private String bluetoothAddress;
     private byte[] rawBytes;
+    private String messageId;
+    private volatile String sendStatus;
+    private String sessionId;
+    private long sendStatusVersion;
+    private com.zzf.bluetoothsmp.BluetoothTextEncoding textEncoding;
+    public String getSessionId() { return sessionId; }
+    public void setSessionId(String value) { sessionId = value; }
+    public long getSendStatusVersion() { return sendStatusVersion; }
+    public void setSendStatusVersion(long value) { sendStatusVersion = value; }
+    public com.zzf.bluetoothsmp.BluetoothTextEncoding getTextEncoding() { return textEncoding; }
+    public void setTextEncoding(com.zzf.bluetoothsmp.BluetoothTextEncoding value) { textEncoding = value; }
+    public String getMessageId() { return messageId; }
+    public void setMessageId(String id) { messageId = id; }
+    public String getSendStatus() { return sendStatus; }
+    public void setSendStatus(String status) { sendStatus = status; }
+    public long estimatedBytes() {
+        return 256L + (rawBytes == null ? 0 : rawBytes.length)
+                + chars(content) + chars(hexContent) + chars(asciiContent);
+    }
+    private static long chars(String value) { return value == null ? 0 : value.length() * 2L; }
 
     public LogItem() {
     }
 
     public LogItem(String content, byte[] rawBytes, int type, String bluetoothAddress) {
         this.content = content;
-        this.rawBytes = rawBytes;
+        this.rawBytes = rawBytes == null ? null : rawBytes.clone();
         this.type = type;
         this.bluetoothAddress = bluetoothAddress;
         this.timestamp = new Date();
@@ -77,11 +97,11 @@ public class LogItem {
     }
 
     public byte[] getRawBytes() {
-        return rawBytes;
+        return rawBytes == null ? null : rawBytes.clone();
     }
 
     public void setRawBytes(byte[] rawBytes) {
-        this.rawBytes = rawBytes;
+        this.rawBytes = rawBytes == null ? null : rawBytes.clone();
     }
 
     public boolean isSent() {

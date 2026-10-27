@@ -1,6 +1,7 @@
 package com.zzf.bluetoothsmp.base;
 
 import android.Manifest;
+import android.content.Context;
 import android.os.Build;
 import android.os.Bundle;
 
@@ -9,8 +10,13 @@ import java.util.List;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
+import com.zzf.bluetoothsmp.utils.LanguageUtils;
 
 public class BaseActivity extends AppCompatActivity {
+    @Override
+    protected void attachBaseContext(Context context) {
+        super.attachBaseContext(LanguageUtils.localizedContext(context));
+    }
      public String[] mPermissionListnew =null;
 
      public void cratePermission(){

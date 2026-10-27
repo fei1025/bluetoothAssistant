@@ -13,3 +13,35 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Local audit artifacts and upload-signing credentials
+.scratch/
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+keystore.properties
+key.properties
+signing.properties
+
+# Local release pipeline artifacts, virtual environment and credentials
+release-artifacts/
+.release-tools/
+*.clixml
+play-service-account*.json
+service-account*.json
+application_default_credentials.json
+__pycache__/
+*.py[cod]
+
+# Plugin signing secrets must stay outside the checkout.
+*.pk8
+plugin-publish-output/
+
+# Local agent state and generated installation packages
+.claude/
+/app/release/
+*.apk
+*.aab

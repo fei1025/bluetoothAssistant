@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Whitelist only non-identifying user preferences. All databases, device MAC
+         preferences, Firebase state and purchase caches/tokens stay on this device.
+         Macros share the history DB and are restored with explicit user export/import. -->
+    <include domain="sharedpref" path="i18n.xml" />
+    <include domain="sharedpref" path="bluetooth_server.xml" />
+</full-backup-content>

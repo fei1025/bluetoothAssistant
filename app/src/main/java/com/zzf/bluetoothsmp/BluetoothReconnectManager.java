@@ -55,6 +55,38 @@ public final class BluetoothReconnectManager {
         cancelPending(address);
     }
 
+    public synchronized void remember(BluetoothDevice device, String uuid, long generation) {
+        if (StaticObject.foregroundGate.isCurrent(generation)) {
+            remember(device, uuid);
+        }
+    }
+
+    public synchronized boolean onClientConnected(String address, int attempt, long generation) {
+        String normalized = normalizeAddress(address);
+        if (normalized == null) return false;
+        BluetoothServiceConnect current = StaticObject.bluetoothSocketMap.get(normalized);
+        return current != null && onClientConnected(address, attempt, generation, current.getSessionId());
+    }
+
+    public synchronized boolean onClientConnected(String address, int attempt, long generation,
+                                                   String expectedSessionId) {
+        String normalized = normalizeAddress(address);
+        if (normalized == null) return false;
+        boolean[] accepted = {false};
+        // Lock order is manager -> foreground gate. Only publication occurs here;
+        // no cancel/socket close is allowed while the gate is held.
+        StaticObject.foregroundGate.runIfCurrent(generation, () -> {
+            BluetoothServiceConnect current = StaticObject.bluetoothSocketMap.get(normalized);
+            if (current == null || !current.isConnected() || !current.getSessionId().equals(expectedSessionId)) return;
+            if (attempt > 0 && !onConnected(normalized, attempt)) return;
+            if (attempt <= 0) onConnected(normalized);
+            StaticObject.connectionRegistry.clearError(normalized);
+            StaticObject.connectionRegistry.set(normalized, BluetoothConnectionState.CONNECTED);
+            accepted[0] = true;
+        });
+        return accepted[0];
+    }
+
     public synchronized void disable(String address) {
         String normalized = normalizeAddress(address);
         if (preferences != null && normalized != null) {
@@ -118,7 +150,8 @@ public final class BluetoothReconnectManager {
 
     public synchronized void onUnexpectedDisconnect(String address) {
         String normalized = normalizeAddress(address);
-        if (normalized == null || preferences == null || !isGlobalEnabled()
+        if (!StaticObject.foregroundGate.isActive()
+                || normalized == null || preferences == null || !isGlobalEnabled()
                 || !preferences.getBoolean(ENABLED_PREFIX + normalized, false)
                 || tasks.containsKey(normalized)) {
             return;
@@ -129,9 +162,26 @@ public final class BluetoothReconnectManager {
         schedule(task, 1);
     }
 
+    public synchronized void onUnexpectedDisconnect(String address, long generation) {
+        if (StaticObject.foregroundGate.isCurrent(generation)) {
+            onUnexpectedDisconnect(address);
+        }
+    }
+
+    public synchronized void onUnexpectedDisconnect(String address, long generation, String expectedSessionId) {
+        String normalized = normalizeAddress(address);
+        if (normalized == null) return;
+        StaticObject.foregroundGate.runIfCurrent(generation, () -> {
+            BluetoothServiceConnect current = StaticObject.bluetoothSocketMap.get(normalized);
+            if (current != null && current.getSessionId().equals(expectedSessionId) && current.isSessionOpen()) {
+                onUnexpectedDisconnect(normalized);
+            }
+        });
+    }
+
     /** Restores user-enabled reconnect tasks after the process was recreated. */
     public synchronized void restorePendingConnections() {
-        if (preferences == null || !isGlobalEnabled()) {
+        if (!StaticObject.foregroundGate.isActive() || preferences == null || !isGlobalEnabled()) {
             return;
         }
         for (Map.Entry<String, ?> entry : preferences.getAll().entrySet()) {
@@ -193,6 +243,12 @@ public final class BluetoothReconnectManager {
         schedule(task, nextAttempt);
     }
 
+    public synchronized void onAttemptFailed(String address, int attempt, long generation) {
+        if (StaticObject.foregroundGate.isCurrent(generation)) {
+            onAttemptFailed(address, attempt);
+        }
+    }
+
     public synchronized void onConnected(String address) {
         String normalized = normalizeAddress(address);
         if (normalized == null) {
@@ -207,14 +263,18 @@ public final class BluetoothReconnectManager {
      * inbound session is authoritative; cancel only the reconnect attempt and
      * restore CONNECTED after cancellation has finished.
      */
-    public synchronized void onIncomingConnected(String address) {
+    public synchronized boolean onIncomingConnected(String address, long generation) {
+        if (!StaticObject.foregroundGate.isCurrent(generation)) {
+            return false;
+        }
         String normalized = normalizeAddress(address);
         if (normalized == null) {
-            return;
+            return false;
         }
         cancelPending(normalized);
         cancelInFlightReconnect(normalized);
         StaticObject.connectionRegistry.set(normalized, BluetoothConnectionState.CONNECTED);
+        return true;
     }
 
     /** Accepts success only from the reconnect attempt currently in flight. */
@@ -303,7 +363,8 @@ public final class BluetoothReconnectManager {
     @SuppressLint("MissingPermission")
     private void attempt(ReconnectTask task, int attempt) {
         synchronized (this) {
-            if (tasks.get(task.address) != task || context == null) {
+            if (!StaticObject.foregroundGate.isActive()
+                    || tasks.get(task.address) != task || context == null) {
                 return;
             }
             task.attempt = attempt;

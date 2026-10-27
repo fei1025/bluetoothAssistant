@@ -29,6 +29,7 @@
 - app/build.gradle：声明 Google Play Billing Library 版本。
 - billing/SupporterBillingManager.java：BillingClient 的唯一封装入口，负责查询商品详情、选择非租赁 Buy offer、发起和恢复购买、确认购买并发布 UI 快照。SUPPORTER_BADGE_PRODUCT_ID 是客户端商品 ID 的唯一来源。
 - billing/SupporterEntitlementResolver.java：不依赖 Android 的纯 Java 状态归并器，优先级为 PURCHASED > PENDING > NOT_OWNED。
+- billing/SupporterAcknowledgementWorker.java：唯一确认执行入口。先把 token 保存到不参与备份的私有偏好，按 SHA-256 token 身份去重 WorkManager 任务；恢复进程后继续执行。网络可用时查询 Play 当前购买，再确认尚未确认的 PURCHASED；退款/撤销或已确认结果移除待办。临时错误使用 30 秒起步的指数退避，每个任务最多 24 次且首见后最多 3 天；达到上限清除待办，下次前台权威查询仍可重新处理有效购买。任务不启动蓝牙，不改变离线徽章权益，也不输出 token。
 - MainActivity.java：创建和关闭 manager；showSupporterDialog() 创建弹窗；updateSupporterUi() 控制按钮和 Toolbar 徽章；getSupporterMessage() 映射本地化文案。
 - res/menu/home_menu.xml 与 res/drawable/ic_supporter_badge.xml：定义支持入口和金色徽章。
 - 三套 strings.xml：默认、简体中文和英文购买文案必须同步修改。
@@ -39,13 +40,17 @@
 2. manager 连接 Google Play，同时查询商品详情和当前 INAPP 购买。
 3. 商品详情提供 offerToken 和本地化价格；没有可用 Buy offer 时购买按钮保持禁用。
 4. queryPurchasesAsync() 的成功结果是当前权益的客户端权威来源：
-   - 匹配商品且为 PURCHASED：缓存 owned、显示徽章、确认未确认订单。
+   - 匹配商品且为 PURCHASED：缓存 owned、显示徽章、持久化并调度未确认订单；确认不依赖再次打开 MainActivity。
    - 匹配商品且为 PENDING：不显示徽章，提示等待付款完成。
    - 成功查询但不存在匹配商品：清除缓存权益。
    - 查询失败：保留最近一次已确认的 owned 缓存，避免购买者离线时徽章闪烁消失。
 5. onResume() 和“恢复购买”都会重新查询商品与购买记录，因此换设备、重装、延迟付款完成或退款后可以重新同步。
 
 本地缓存位于 SharedPreferences supporter_billing/last_confirmed_owned，只用于离线 UI。不要把它改成购买的唯一凭证。
+
+待确认 token 位于 `supporter_pending_acknowledgements`；WorkManager 输入只包含其 SHA-256 身份，不包含 token。该偏好、购买缓存和 WorkManager 数据库均不参加 cloud backup/device transfer。UI 查询带代次检查，关闭或旧查询的回调不能覆盖新购买。BillingClient 启用自动服务重连；后台确认连接在单次任务结束后关闭。
+
+WorkManager 可以跨正常进程终止和重启恢复；断网、系统调度限制、用户 force-stop、移除应用或停用 Play 仍会影响时效，不能把客户端重试描述成绝对保证。Google 要求 PURCHASED 后三天内确认，超时会退款。未来高价值权益仍应采用服务端校验/确认和实时开发者通知。[官方确认与重试规则](https://developer.android.com/google/play/billing/errors)
 
 ## 修改指南
 
@@ -76,3 +81,5 @@ Play 内部轨道至少验证：
 - 中英文页面显示 Play 返回的实际币种和价格。
 
 状态归并单元测试位于 SupporterEntitlementResolverTest.java。新增购买状态分支时，应先扩展这里的测试，再修改 manager。
+
+确认策略单元测试覆盖截止时间、尝试上限、临时/永久错误和 token 工作身份去重。Play 测试还应模拟 NETWORK_ERROR/SERVICE_DISCONNECTED 后返回主页或结束进程，核实网络恢复后订单确认，以及 pending/退款不被后台任务授予权益。

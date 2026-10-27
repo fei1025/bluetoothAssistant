@@ -1,257 +1,83 @@
 package com.zzf.bluetoothsmp.liaoTian;
 
-import static com.zzf.bluetoothsmp.R.string.ConnectTheInterrupt;
-
 import android.os.Bundle;
-import android.os.Handler;
-import android.os.Looper;
-import android.os.Message;
-import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.TextView;
+import android.widget.Toast;
 
-import androidx.annotation.Nullable;
 import androidx.annotation.NonNull;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.fragment.app.Fragment;
-import androidx.lifecycle.Observer;
-import androidx.lifecycle.ViewModelProvider;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
 
+import com.zzf.bluetoothsmp.BluetoothTelemetry;
 import com.zzf.bluetoothsmp.R;
 import com.zzf.bluetoothsmp.databinding.FragmentLiantianNewBinding;
-import com.zzf.bluetoothsmp.BluetoothServiceConnect;
-import com.zzf.bluetoothsmp.MyApplication;
-import com.zzf.bluetoothsmp.StaticObject;
-import com.zzf.bluetoothsmp.customAdapter.MsgAdapter;
 import com.zzf.bluetoothsmp.entity.BluetoothDrive;
-import com.zzf.bluetoothsmp.entity.MessageMapper;
-import com.zzf.bluetoothsmp.entity.Msg;
-import com.zzf.bluetoothsmp.event.BluetoothType;
-import com.zzf.bluetoothsmp.utils.ToastUtil;
 
-import org.litepal.LitePal;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-
-/**
- * A placeholder fragment containing a simple view.
- */
 public class ChatModeFragment extends Fragment {
-
-    private static final String ARG_SECTION_NUMBER = "section_number";
-    private  String TAG="ChatModeFragment";
-
     private FragmentLiantianNewBinding binding;
-    private EditText inputText;
-    BluetoothDrive drive;
-    RecyclerView msgRecyclerView;
-    static public List<Msg> msgList;
-    private Liantian_new liantian_new;
+    private ChatTranscriptController transcript;
 
-
-    public ChatModeFragment() {
+    @Override
+    public void onResume() {
+        super.onResume();
+        BluetoothTelemetry.logScreenView("chat", getClass().getSimpleName());
     }
 
     @Override
-    public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-    }
-
-    @Override
-    public View onCreateView(
-            @NonNull LayoutInflater inflater, ViewGroup container,
-            Bundle savedInstanceState) {
-
+    public View onCreateView(@NonNull LayoutInflater inflater, ViewGroup container,
+                             Bundle savedInstanceState) {
         binding = FragmentLiantianNewBinding.inflate(inflater, container, false);
-        View root = binding.getRoot();
-        msgList = new ArrayList<>();
-        liantian_new=(Liantian_new)getActivity();
-        drive=liantian_new.getDrive();
-        initView(root);
-        initData(root);
-        applyImeInsets(root);
-        return root;
+        Liantian_new activity = (Liantian_new) requireActivity();
+        BluetoothDrive drive = activity.getDrive();
+        if (drive != null) {
+            transcript = new ChatTranscriptController(binding.getRoot(), drive.getDriveAdd(),
+                    drive.getUuid(), activity.getSessionId(), () -> {
+                Toast.makeText(requireContext(), R.string.chat_connection_ended, Toast.LENGTH_SHORT).show();
+                activity.finishSession();
+            });
+            transcript.restoreState(savedInstanceState);
+        }
+        binding.send.setOnClickListener(view -> {
+            String text = binding.inputText.getText().toString();
+            if (!text.isEmpty() && activity.sendText(text)) binding.inputText.setText("");
+        });
+        applyImeInsets(binding.getRoot());
+        return binding.getRoot();
+    }
+
+    private void applyImeInsets(View root) {
+        View bar = binding.inputBar;
+        int start = bar.getPaddingStart();
+        int top = bar.getPaddingTop();
+        int end = bar.getPaddingEnd();
+        int bottom = bar.getPaddingBottom();
+        ViewCompat.setOnApplyWindowInsetsListener(root, (view, insets) -> {
+            Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
+            // The Activity already applies navigation-bar padding to the pager.
+            Insets navigation = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
+            bar.setPaddingRelative(start, top, end, bottom + Math.max(0, ime.bottom - navigation.bottom));
+            return insets;
+        });
+        ViewCompat.requestApplyInsets(root);
+    }
+
+    @Override
+    public void onSaveInstanceState(@NonNull Bundle state) {
+        if (transcript != null) transcript.saveState(state);
+        super.onSaveInstanceState(state);
     }
 
     @Override
     public void onDestroyView() {
-        if (liantian_new != null && liantian_new.UUID != null) {
-            StaticObject.bluetoothEvent.deleteAllEventByUuid(liantian_new.UUID);
+        if (transcript != null) {
+            transcript.close();
+            transcript = null;
         }
-        mHandler.removeCallbacksAndMessages(null);
-        super.onDestroyView();
         binding = null;
+        super.onDestroyView();
     }
-
-
-    public void initView(View root ){
-        msgRecyclerView = root.findViewById(R.id.msg_recycler_view);
-       LinearLayoutManager linearLayout = new LinearLayoutManager(getContext());
-        msgRecyclerView.setLayoutManager(linearLayout);
-        initMsg();
-        MsgAdapter adapter = new MsgAdapter(msgList);
-        msgRecyclerView.setAdapter(adapter);
-        if (!msgList.isEmpty()) {
-            Objects.requireNonNull(msgRecyclerView.getAdapter()).notifyItemChanged(msgList.size() - 1);
-            msgRecyclerView.scrollToPosition(msgList.size() - 1);
-        }
-    }
-
-
-    private void applyImeInsets(View root) {
-        View inputBar = root.findViewById(R.id.input_bar);
-        if (inputBar == null) {
-            return;
-        }
-        final int paddingStart = inputBar.getPaddingStart();
-        final int paddingTop = inputBar.getPaddingTop();
-        final int paddingEnd = inputBar.getPaddingEnd();
-        final int paddingBottom = inputBar.getPaddingBottom();
-
-        ViewCompat.setOnApplyWindowInsetsListener(root, (v, insets) -> {
-            Insets navInsets = insets.getInsets(WindowInsetsCompat.Type.navigationBars());
-            Insets imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime());
-            int bottomInset = Math.max(navInsets.bottom, imeInsets.bottom);
-            inputBar.setPaddingRelative(
-                    paddingStart,
-                    paddingTop,
-                    paddingEnd,
-                    paddingBottom + bottomInset
-            );
-            return insets;
-        });
-    }
-
-    public void initData(View root){
-
-        if (liantian_new == null || drive == null || drive.getDriveAdd() == null) {
-            return;
-        }
-        String bluetoothAdd=drive.getDriveAdd();
-        //监听接受数据
-        StaticObject.bluetoothEvent.addEventListener(BluetoothType.RECEIVE, l -> {
-            Msg msg = (Msg) l.getEventData()[0];
-            if (bluetoothAdd.equals(msg.getBluetoothAdd())) {
-                senHandlerMsg(0, msg);
-            }
-        }, liantian_new.UUID);
-        //监听发送数据
-        StaticObject.bluetoothEvent.addEventListener(BluetoothType.SEND, l -> {
-            Msg msg = (Msg) l.getEventData()[0];
-            Log.d(TAG, "onCreate: " + msg.toString());
-            if (bluetoothAdd.equals(msg.getBluetoothAdd())) {
-                senHandlerMsg(0, msg);
-            }
-        }, liantian_new.UUID);
-        //监听断开连接
-        StaticObject.bluetoothEvent.addEventListener(BluetoothType.NOT_CONNECT, l -> {
-            Msg msg = (Msg) l.getEventData()[0];
-            if (bluetoothAdd.equals(msg.getBluetoothAdd())) {
-                senHandlerMsg(1, msg);
-            }
-        }, liantian_new.UUID);
-
-
-        inputText = root.findViewById(R.id.input_text);
-        Button send = root.findViewById(R.id.send);
-        send.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                BluetoothServiceConnect bluetoothServiceConnect = StaticObject.bluetoothSocketMap.get(drive.getDriveAdd());
-                if (bluetoothServiceConnect == null) {
-                    ToastUtil.toastWord(MyApplication.getContext(), "请连接后重试");
-                    return;
-                }
-                String s = inputText.getText().toString();
-                if (!"".equals(s)) {
-                    try {
-                        byte[] payload = bluetoothServiceConnect.encodeTextPayload(s);
-                        Msg eventDatum = new Msg(payload, Msg.TYPE_SENT, drive.getDriveAdd());
-                        eventDatum.setContent(s);
-                        eventDatum.setBluetoothName(drive.getDriveName());
-                        eventDatum.setBluetoothAdd(drive.getDriveAdd());
-                        eventDatum.setSendUuid(drive.getUuid());
-                        StaticObject.mTaskQueue.put(eventDatum);
-                        inputText.setText("");
-                    } catch (IllegalArgumentException error) {
-                        ToastUtil.toastWord(getContext(), error.getMessage());
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-        });
-    }
-
-
-    public void initMsg() {
-        if(drive==null ||drive.getDriveAdd() == null || drive.getUuid() == null){
-            return;
-        }
-        List<MessageMapper> messageList = LitePal.where(" sendAdd =? and sendUuid = ?", drive.getDriveAdd(), drive.getUuid()).order("sendTime ").find(MessageMapper.class);
-        if (messageList != null && messageList.size() != 0) {
-            for (MessageMapper ms : messageList) {
-
-                Msg m = new Msg(ms.getMessage(), ms.getType(), ms.getSendAdd());
-                if (Msg.TYPE_RECEIVED == ms.getType()) {
-                    m.setBluetoothName(ms.getSendName());
-                } else {
-                    m.setBluetoothName(ms.getReceiveName());
-                }
-                m.setSendUuid(ms.getSendUuid());
-                msgList.add(m);
-            }
-
-        }
-    }
-
-    public Handler mHandler = new Handler(Looper.getMainLooper()) {
-        @Override
-        public void handleMessage(Message msg) {
-            if (!isAdded() || binding == null || liantian_new == null) {
-                return;
-            }
-            switch (msg.what) {
-                case 0:
-                    List<Msg> msgList = ChatModeFragment.msgList;
-                    if (msgList == null || msg.obj == null) {
-                        return;
-                    }
-                    msgList.add((Msg) msg.obj);
-                    if (msgRecyclerView != null && msgRecyclerView.getAdapter() != null) {
-                        msgRecyclerView.getAdapter().notifyItemInserted(msgList.size() - 1);
-                        msgRecyclerView.scrollToPosition(msgList.size() - 1);
-                    }
-                    break;
-                case 1:
-                    ToastUtil.toastWord(getContext(), getContext().getString(ConnectTheInterrupt));
-                    liantian_new.exit();
-                    break;
-                default:
-                    Log.e(TAG, "Unknown msg " + msg.what);
-                    break;
-            }
-        }
-    };
-    public void senHandlerMsg(int what, Object m) {
-        if (!isAdded() || binding == null) {
-            return;
-        }
-        Message msg = new Message();
-        msg.what = what;
-        msg.obj = m;
-        mHandler.sendMessage(msg);
-    }
-
-
 }

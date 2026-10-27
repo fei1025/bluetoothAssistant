@@ -5,10 +5,10 @@ import android.util.Log;
 import java.util.*;
 
 public class EventDispatcher {
-    private Map<EventType, Map<String, EventListener>> listenersMap;
+    private final Map<EventType, Map<String, EventListener>> listenersMap;
 
     public EventDispatcher() {
-        this.listenersMap = new HashMap();
+        this.listenersMap = new HashMap<>();
     }
 
     public synchronized void addEventListener(EventType eventType, EventListener listener, String uuid) {

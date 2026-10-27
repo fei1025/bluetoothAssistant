@@ -85,7 +85,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginStart="16dp"
-                            android:text="00:00:00"
+                            android:text="@string/default_elapsed_time"
                             android:textSize="14sp"
                             android:visibility="gone" />
 
@@ -325,7 +325,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:inputType="number"
-                            android:text="1" />
+                            android:text="@string/default_one" />
                     </com.google.android.material.textfield.TextInputLayout>
 
                     <LinearLayout
@@ -447,7 +447,7 @@
                                 android:layout_height="wrap_content"
                                 android:inputType="number"
                                 android:maxLines="1"
-                                android:text="100" />
+                                android:text="@string/default_interval_ms" />
 
                         </com.google.android.material.textfield.TextInputLayout>
 
@@ -464,7 +464,7 @@
                                 android:layout_height="wrap_content"
                                 android:inputType="number"
                                 android:maxLines="1"
-                                android:text="10" />
+                                android:text="@string/default_repeat_count" />
 
                         </com.google.android.material.textfield.TextInputLayout>
 
@@ -597,7 +597,7 @@
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:inputType="number"
-                                android:text="1" />
+                                android:text="@string/default_one" />
                         </com.google.android.material.textfield.TextInputLayout>
 
                         <com.google.android.material.textfield.TextInputLayout
@@ -613,7 +613,7 @@
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
                                 android:inputType="number"
-                                android:text="0" />
+                                android:text="@string/default_zero" />
                         </com.google.android.material.textfield.TextInputLayout>
                     </LinearLayout>
 
@@ -629,7 +629,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:inputType="textVisiblePassword"
-                            android:text="0D 0A" />
+                            android:text="@string/default_crlf_hex" />
                     </com.google.android.material.textfield.TextInputLayout>
 
                     <com.google.android.material.button.MaterialButton
@@ -692,6 +692,18 @@
                             android:paddingStart="4dp"
                             android:paddingEnd="4dp"
                             android:text="@string/clear_log"
+                            android:textSize="12sp"
+                            style="@style/Widget.MaterialComponents.Button.TextButton" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_pause_logs"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:minWidth="0dp"
+                            android:paddingStart="4dp"
+                            android:paddingEnd="4dp"
+                            android:text="@string/debug_pause_logs"
                             android:textSize="12sp"
                             style="@style/Widget.MaterialComponents.Button.TextButton" />
 

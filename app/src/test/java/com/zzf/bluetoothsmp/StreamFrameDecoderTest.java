@@ -74,6 +74,39 @@ public class StreamFrameDecoderTest {
     }
 
     @Test
+    public void lateTimerDoesNotMergeBurstsAcrossAnIdleGap() {
+        StreamFrameDecoder decoder = new StreamFrameDecoder(new BluetoothFrameConfig(
+                BluetoothFrameMode.TIMEOUT, 64, 1, new byte[0], 100));
+        decoder.append(bytes("A"), 1, 1000);
+        List<byte[]> frames = decoder.append(bytes("B"), 1, 1200);
+        assertEquals(1, frames.size());
+        assertArrayEquals(bytes("A"), frames.get(0));
+        assertArrayEquals(bytes("B"), decoder.pollTimeout(1300).get(0));
+    }
+
+    @Test
+    public void oversizedTimeoutBurstIsDiscardedUntilItsIdleBoundary() {
+        StreamFrameDecoder decoder = new StreamFrameDecoder(new BluetoothFrameConfig(
+                BluetoothFrameMode.TIMEOUT, 3, 1, new byte[0], 100));
+        decoder.append(bytes("123456"), 6, 1000);
+        assertTrue(decoder.pollTimeout(1100).isEmpty());
+        assertEquals(1, decoder.getDroppedFrameCount());
+        decoder.append(bytes("ok"), 2, 1200);
+        assertArrayEquals(bytes("ok"), decoder.pollTimeout(1300).get(0));
+    }
+
+    @Test
+    public void repeatedPrefixCustomDelimiterMatchesAcrossReads() {
+        StreamFrameDecoder decoder = new StreamFrameDecoder(new BluetoothFrameConfig(
+                BluetoothFrameMode.CUSTOM, 64, 1, bytes("abab"), 0));
+        assertTrue(decoder.append(bytes("firstaba"), 8).isEmpty());
+        List<byte[]> frames = decoder.append(bytes("bsecondabab"), 11);
+        assertEquals(2, frames.size());
+        assertArrayEquals(bytes("first"), frames.get(0));
+        assertArrayEquals(bytes("second"), frames.get(1));
+    }
+
+    @Test
     public void rawModePreservesBytesInBoundedChunks() {
         StreamFrameDecoder decoder = new StreamFrameDecoder(new BluetoothFrameConfig(
                 BluetoothFrameMode.RAW, 2, 1, new byte[0], 0));

@@ -1,6 +1,5 @@
 package com.zzf.bluetoothsmp;
 
-import android.Manifest;
 import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
@@ -29,14 +28,14 @@ import com.zzf.bluetoothsmp.billing.SupporterBillingManager;
 import com.zzf.bluetoothsmp.databinding.ActivityHomeBinding;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.zzf.bluetoothsmp.base.BaseActivity;
-import com.zzf.bluetoothsmp.entity.BluetoothDrive;
 import com.zzf.bluetoothsmp.entity.BluetoothDeviceProfileEntity;
-import com.zzf.bluetoothsmp.liaoTian.Liantian_new;
 import com.zzf.bluetoothsmp.utils.CheckUpdate;
+import com.zzf.bluetoothsmp.utils.BluetoothAddressUtils;
 import com.zzf.bluetoothsmp.utils.LanguageUtils;
 import com.zzf.bluetoothsmp.utils.ToastUtil;
 
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 
@@ -46,6 +45,7 @@ import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.activity.OnBackPressedCallback;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
@@ -65,7 +65,6 @@ public class MainActivity extends BaseActivity {
     private static final int REQ_DISCOVERABLE_BT = 0x12;
     private static final int REQ_MENU_ENABLE_BT = 0x13;
     private static final int REQ_MENU_DISCOVERABLE_BT = 0x14;
-    private static final int REQ_POST_NOTIFICATIONS = 0x15;
     private static final int DISCOVERABLE_DURATION_SECONDS = 300;
     private final int mOpenCode = 0x01;
     public int scan = 1;
@@ -74,12 +73,16 @@ public class MainActivity extends BaseActivity {
     private boolean initializationPromptInProgress = false;
     private boolean bluetoothPermissionRequestInProgress = false;
     private boolean receiverRegistered = false;
+    private final Set<String> discoveryResultAddresses = new HashSet<>();
+    private long discoveryStartedAtMillis;
+    private String pendingScanOutcome = "completed";
     private ActivityHomeBinding binding;
     private OnActivityDataChangedListener onActivityDataChangedListener;
     private MenuItem discoverableMenuItem;
     private MenuItem supporterBadgeMenuItem;
     private AlertDialog supporterDialog;
     private SupporterBillingManager supporterBillingManager;
+    private CheckUpdate checkUpdate;
     private SupporterBillingManager.Snapshot supporterSnapshot;
     public    BluetoothService bluetoothService;
 
@@ -100,7 +103,8 @@ public class MainActivity extends BaseActivity {
                 showExitDialog();
             }
         });
-        new CheckUpdate().check(MainActivity.this);
+        checkUpdate = new CheckUpdate(this);
+        if (!BuildConfig.OFFLINE_AUDIT) checkUpdate.check();
         Toolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         @SuppressLint({"MissingInflatedId", "LocalSuppress"}) BottomNavigationView navView = findViewById(R.id.nav_view);
@@ -110,7 +114,11 @@ public class MainActivity extends BaseActivity {
                 R.id.navigation_home, R.id.navigation_service, R.id.navigation_dashboard)
                 .build();
         NavController navController = Navigation.findNavController(this, R.id.nav_host_fragment_activity_home);
-        NavigationUI.setupActionBarWithNavController(this, navController, appBarConfiguration);
+        // Restoring Service/History can recreate their own toolbar before onCreate;
+        // only Home supplies R.id.toolbar as this Activity's support ActionBar.
+        if (getSupportActionBar() != null) {
+            NavigationUI.setupActionBarWithNavController(this, navController, appBarConfiguration);
+        }
         NavigationUI.setupWithNavController(binding.navView, navController);
 
         supporterBillingManager = new SupporterBillingManager(this);
@@ -130,8 +138,6 @@ public class MainActivity extends BaseActivity {
         } else {
             requestBluetoothPermissions();
         }
-        new Handler(Looper.getMainLooper()).post(() ->
-                handleIncomingConnectionIntent(getIntent()));
     }
 
     public static void actionActivity(Context context) {
@@ -166,8 +172,8 @@ public class MainActivity extends BaseActivity {
             Toast.makeText(context, "选择的语言和当前语言相同", Toast.LENGTH_SHORT).show();
             return;
         }*/
-        LanguageUtils.updateLanguage(context, locale);
-        MainActivity.actionActivity(context);
+        // AppCompat recreates affected Activities while retaining their navigation state.
+        // No task reset or hidden framework field replacement is needed.
     }
 
 
@@ -216,6 +222,7 @@ public class MainActivity extends BaseActivity {
         if (mBluetooth != null && BluetoothPermissionUtils.hasScanPermission(this)
                 && mBluetooth.isDiscovering()) {
             //mBluetooth.startDiscovery();//开始扫描周围的蓝牙设备
+            pendingScanOutcome = "lifecycle_canceled";
             mBluetooth.cancelDiscovery();
         }
         isCreate = false;
@@ -223,6 +230,7 @@ public class MainActivity extends BaseActivity {
 
     public void onResume() {
         super.onResume();
+        if (checkUpdate != null && !BuildConfig.OFFLINE_AUDIT) checkUpdate.onResume();
         if (supporterBillingManager != null) {
             supporterBillingManager.syncPurchases();
         }
@@ -238,6 +246,7 @@ public class MainActivity extends BaseActivity {
             requestDiscoverableIfNeededThenContinueInit();
         } else if (mBluetooth != null && mBluetooth.isEnabled()
                 && bluetoothInitCompleted
+                && BluetoothServerSettings.isEnabled(this)
                 && (bluetoothService == null || !bluetoothService.isRunning())) {
             restartBluetoothListenerIfNeeded();
         }
@@ -249,46 +258,12 @@ public class MainActivity extends BaseActivity {
             bluetoothService = StaticObject.ensureBluetoothService(this, mBluetooth);
             StaticObject.ensureMessageDispatcher();
             StaticObject.ensureMessageMonitor();
-            requestNotificationPermissionIfNeeded();
-            BluetoothConnectionForegroundService.start(this);
             StaticObject.reconnectManager.restorePendingConnections();
             Log.i(TAG, "Restarted stopped Bluetooth SPP listener after returning to foreground");
         } catch (IOException | RuntimeException error) {
             Log.e(TAG, "Unable to restart Bluetooth SPP listener", error);
         }
     }
-
-    @Override
-    protected void onNewIntent(Intent intent) {
-        super.onNewIntent(intent);
-        setIntent(intent);
-        handleIncomingConnectionIntent(intent);
-    }
-
-    private void handleIncomingConnectionIntent(Intent intent) {
-        if (intent == null
-                || !"com.zzf.bluetoothsmp.action.OPEN_INCOMING_CONNECTION".equals(intent.getAction())) {
-            return;
-        }
-        String address = intent.getStringExtra("incomingBluetoothAdd");
-        if (address == null || StaticObject.bluetoothSocketMap.get(address) == null) {
-            return;
-        }
-        BluetoothServiceConnect connection = StaticObject.bluetoothSocketMap.get(address);
-        String name = intent.getStringExtra("incomingBluetoothName");
-        BluetoothDrive drive = new BluetoothDrive();
-        drive.setDriveName(name == null ? address : name);
-        drive.setDriveAdd(address);
-        drive.setUuid(connection.getSendUuid() == null
-                ? intent.getStringExtra("incomingBluetoothUuid") : connection.getSendUuid());
-        Intent chatIntent = new Intent(this, Liantian_new.class);
-        chatIntent.putExtra("BluetoothDrive", drive);
-        chatIntent.putExtra("bluetoothName", drive.getDriveName());
-        chatIntent.putExtra("bluetoothAdd", address);
-        chatIntent.putExtra("bluetoothUUid", drive.getUuid());
-        startActivity(chatIntent);
-    }
-
 
     public interface OnActivityDataChangedListener {
         void addFruitData(Fruit string);
@@ -309,7 +284,7 @@ public class MainActivity extends BaseActivity {
             return;
         }
         bluetoothPermissionRequestInProgress = false;
-        BluetoothTelemetry.logPermissionResult("server", hasBluetoothRuntimePermissions());
+        BluetoothTelemetry.logPermissionResult("startup", hasBluetoothRuntimePermissions());
         if (!hasBluetoothRuntimePermissions()) {
             showBluetoothPermissionRequiredDialog();
             updateDiscoverableMenuItem();
@@ -416,10 +391,8 @@ public class MainActivity extends BaseActivity {
         //初始化蓝牙
         initBluetooth();
         try {
-            // 创建或复用进程级监听服务；前台服务在进程重启后可能先于 Activity 恢复它。
+            // 前台生命周期负责恢复连接，监听仍尊重用户持久化开关。
             bluetoothService = StaticObject.ensureBluetoothService(this, mBluetooth);
-            requestNotificationPermissionIfNeeded();
-            BluetoothConnectionForegroundService.start(this);
             StaticObject.ensureMessageDispatcher();
             bluetoothInitCompleted = true;
             StaticObject.reconnectManager.restorePendingConnections();
@@ -433,19 +406,34 @@ public class MainActivity extends BaseActivity {
 
     @SuppressLint("MissingPermission")
     public void startBluetoothDiscovery() {
-        if (mBluetooth != null && BluetoothPermissionUtils.hasScanPermission(this)
+        if (MyApplication.isAppInForeground()
+                && mBluetooth != null && BluetoothPermissionUtils.hasScanPermission(this)
                 && !mBluetooth.isDiscovering()) {
-            mBluetooth.startDiscovery();//开始扫描周围的蓝牙设备
+            boolean started = mBluetooth.startDiscovery();//开始扫描周围的蓝牙设备
+            if (started) {
+                discoveryResultAddresses.clear();
+                discoveryStartedAtMillis = System.currentTimeMillis();
+                pendingScanOutcome = "completed";
+                BluetoothTelemetry.logScanStart("home");
+            } else {
+                BluetoothTelemetry.logScanComplete(0, 0L, "start_failed");
+            }
         }
     }
 
-    private void requestNotificationPermissionIfNeeded() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-                && ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_POST_NOTIFICATIONS);
+    public void setBluetoothServerEnabled(boolean enabled) throws IOException {
+        StaticObject.setBluetoothServerEnabled(this, enabled);
+        if (!enabled) {
+            bluetoothService = null;
+            return;
         }
+        bluetoothService = StaticObject.ensureBluetoothService(this, mBluetooth);
+        StaticObject.ensureMessageDispatcher();
+        StaticObject.ensureMessageMonitor();
+    }
+
+    public void restartBluetoothServerIfEnabled() throws IOException {
+        bluetoothService = StaticObject.restartBluetoothService(this, mBluetooth);
     }
 
     @SuppressLint("MissingPermission")
@@ -521,28 +509,22 @@ public class MainActivity extends BaseActivity {
 
     private void registerDiscoveryReceiver(IntentFilter filter) {
         if (!receiverRegistered) {
-            registerReceiver(discoveryReceiver, filter);
+            // Bluetooth service broadcasts can originate outside the system UID;
+            // all actions in this filter are framework-protected system broadcasts.
+            ContextCompat.registerReceiver(this, discoveryReceiver, filter, ContextCompat.RECEIVER_EXPORTED);
             receiverRegistered = true;
         }
     }
 
     @Override
     protected void onDestroy() {
+        if (checkUpdate != null) checkUpdate.close();
         if (receiverRegistered) {
             unregisterReceiver(discoveryReceiver);
             receiverRegistered = false;
         }
-        if (!isChangingConfigurations()) {
-            // The foreground service may have restored the process-level listener
-            // while this Activity field was still null. Always stop through the
-            // shared owner instead of relying on the Activity-local reference.
-            StaticObject.stopBluetoothService();
-            bluetoothService = null;
-            BluetoothConnectionForegroundService.stop(this);
-            StaticObject.closeAllConnections();
-            StaticObject.stopMessageMonitor();
-            StaticObject.stopMessageDispatcher();
-        }
+        // Application owns Bluetooth lifetime across all Activities and recreation.
+        bluetoothService = null;
         if (supporterDialog != null) {
             supporterDialog.dismiss();
             supporterDialog = null;
@@ -570,8 +552,17 @@ public class MainActivity extends BaseActivity {
                         BluetoothAdapter.EXTRA_STATE, BluetoothAdapter.ERROR));
                 return;
             }
-            if (BluetoothAdapter.ACTION_DISCOVERY_STARTED.equals(action)
-                    || BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
+            if (BluetoothAdapter.ACTION_DISCOVERY_STARTED.equals(action)) {
+                if (discoveryStartedAtMillis <= 0L) {
+                    discoveryResultAddresses.clear();
+                    discoveryStartedAtMillis = System.currentTimeMillis();
+                    pendingScanOutcome = "completed";
+                    BluetoothTelemetry.logScanStart("system");
+                }
+                return;
+            }
+            if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
+                finishDiscoveryTelemetry();
                 return;
             }
             BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
@@ -594,6 +585,12 @@ public class MainActivity extends BaseActivity {
                 return;
             }
             fruit.setAddress(address);
+            if (BluetoothDevice.ACTION_FOUND.equals(action)) {
+                String normalizedAddress = BluetoothAddressUtils.normalize(address);
+                if (normalizedAddress != null) {
+                    discoveryResultAddresses.add(normalizedAddress);
+                }
+            }
 
             // Prefer the name carried by the discovery broadcast. Some devices do not
             // populate BluetoothDevice#getName() until after ACTION_FOUND is delivered.
@@ -642,6 +639,24 @@ public class MainActivity extends BaseActivity {
         }
     };
 
+    private void finishDiscoveryTelemetry() {
+        if (discoveryStartedAtMillis <= 0L) {
+            return;
+        }
+        int resultCount = discoveryResultAddresses.size();
+        String outcome = pendingScanOutcome;
+        if ("completed".equals(outcome)) {
+            outcome = resultCount > 0 ? "success" : "empty";
+        }
+        BluetoothTelemetry.logScanComplete(resultCount,
+                BluetoothTelemetryPolicy.elapsedMillis(
+                        discoveryStartedAtMillis, System.currentTimeMillis()),
+                outcome);
+        discoveryStartedAtMillis = 0L;
+        discoveryResultAddresses.clear();
+        pendingScanOutcome = "completed";
+    }
+
     @SuppressLint("MissingPermission")
     private String resolveDeviceName(@NonNull BluetoothDevice device,
                                      @Nullable Intent sourceIntent,
@@ -658,7 +673,7 @@ public class MainActivity extends BaseActivity {
             }
         }
         if (name == null || name.trim().isEmpty()) {
-            BluetoothDeviceProfileEntity profile = BluetoothDeviceProfileStore.find(address);
+            BluetoothDeviceProfileEntity profile = BluetoothDeviceProfileStore.findCached(address);
             if (profile != null) {
                 name = profile.getDeviceName();
             }
@@ -674,11 +689,9 @@ public class MainActivity extends BaseActivity {
                     && mBluetooth.isDiscovering()) {
                 mBluetooth.cancelDiscovery();
             }
-            // Do not depend on the Activity-local field: the foreground service
-            // can own the restored listener after a process/activity recreation.
+            // Stop the listener through its process-level owner.
             StaticObject.stopBluetoothService();
             bluetoothService = null;
-            BluetoothConnectionForegroundService.stop(this);
             StaticObject.closeAllConnections(true);
             bluetoothInitCompleted = false;
             return;
@@ -776,6 +789,8 @@ public class MainActivity extends BaseActivity {
             requestDiscoverableFromMenu();
             return true;
         } else if (itemId == R.id.support_developer) {
+            BluetoothTelemetry.logSupportDeveloperClick(
+                    supporterSnapshot != null && supporterSnapshot.isOwned());
             showSupporterDialog();
             return true;
         } else if (itemId == R.id.bt_menu_language) {
@@ -785,7 +800,7 @@ public class MainActivity extends BaseActivity {
                 toSetLanguage(1);
                 item.setIcon(R.drawable.ic_en);
             } else if ("en".equals(language)) {
-                toSetLanguage(0);
+                toSetLanguage(2);
                 item.setIcon(R.drawable.ic_zh);
             }
             return true;

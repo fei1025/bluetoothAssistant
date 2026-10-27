@@ -3,8 +3,31 @@ package com.zzf.bluetoothsmp.entity;
 import org.litepal.crud.LitePalSupport;
 
 import java.util.Date;
+import android.util.Base64;
 
 public class MessageMapper extends LitePalSupport {
+    private long id;
+    private String messageId, sessionId, textEncoding, sendStatus, sendError;
+    private long requestId;
+    // LitePal 3.2.3 supports String fields, but does not create columns for byte[].
+    private String payloadBase64;
+    public long getId() { return id; }
+    public String getMessageId() { return messageId; }
+    public void setMessageId(String value) { messageId = value; }
+    public long getRequestId() { return requestId; }
+    public void setRequestId(long value) { requestId = value; }
+    public String getSessionId() { return sessionId; }
+    public void setSessionId(String value) { sessionId = value; }
+    public byte[] getPayload() { return payloadBase64 == null ? null : Base64.decode(payloadBase64, Base64.NO_WRAP); }
+    public void setPayload(byte[] value) { payloadBase64 = value == null ? null : Base64.encodeToString(value, Base64.NO_WRAP); }
+    public String getPayloadBase64() { return payloadBase64; }
+    public void setPayloadBase64(String value) { payloadBase64 = value; }
+    public String getTextEncoding() { return textEncoding; }
+    public void setTextEncoding(String value) { textEncoding = value; }
+    public String getSendStatus() { return sendStatus; }
+    public void setSendStatus(String value) { sendStatus = value; }
+    public String getSendError() { return sendError; }
+    public void setSendError(String value) { sendError = value; }
     public String receiveAdd;
     public Date receiveTime;
     public String receiveName;

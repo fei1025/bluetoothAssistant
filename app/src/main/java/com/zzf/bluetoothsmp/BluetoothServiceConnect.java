@@ -19,9 +19,19 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 public class BluetoothServiceConnect {
     private static final String TAG = "BluetoothSession";
+    private final String sessionId = UUID.randomUUID().toString();
+    private final Object framePublicationLock = new Object();
+    private final ConcurrentMap<Long, Msg> pendingMessages = new ConcurrentHashMap<>();
+    private BluetoothEncodingUtils.StreamingTextDecoder streamingTextDecoder;
+
+    interface SessionOwner {
+        boolean isActive();
+    }
 
     public interface SendProgressListener {
         void onStatus(BluetoothSendStatus status, long requestId);
@@ -29,6 +39,29 @@ public class BluetoothServiceConnect {
         void onProgress(long requestId, int sentBytes, int totalBytes);
     }
 
+    public interface PluginListener {
+        void onData(byte[] bytes);
+        void onSend(long requestId, BluetoothSendStatus status, Throwable error);
+        void onClosed();
+    }
+    private volatile PluginListener pluginListener;
+    private boolean pluginOwned;
+
+    /** RAW transport-only session. Configure before reserving/starting; never changes device preferences. */
+    public void configurePlugin(PluginListener listener) {
+        if (bluetoothSocket != null) throw new IllegalStateException("Session already started");
+        pluginOwned = true; pluginListener = listener;
+    }
+    public long sendPlugin(byte[] payload) {
+        if (!pluginOwned || sendQueue == null || !isSessionOpen()) throw new IllegalStateException("Session closed");
+        long id = BluetoothRequestIds.next();
+        sendQueue.enqueue(id, payload, null);
+        return id;
+    }
+    public void sendPlugin(long requestId, byte[] payload) {
+        if (!pluginOwned || sendQueue == null || !isSessionOpen()) throw new IllegalStateException("Session closed");
+        sendQueue.enqueue(requestId, payload, null);
+    }
     public BluetoothSocket bluetoothSocket;
     private BufferedOutputStream bufferedOutputStream;
     private BufferedInputStream bufferedInputStream;
@@ -49,6 +82,8 @@ public class BluetoothServiceConnect {
     private volatile BluetoothSendStatus lastSendStatus;
     private volatile String lastSendError;
     private volatile boolean duplicateSession;
+    private long foregroundGeneration;
+    private volatile String closeReason = "unknown";
     private final AtomicLong queuedSendCount = new AtomicLong();
     private final AtomicLong successfulSendCount = new AtomicLong();
     private final AtomicLong failedSendCount = new AtomicLong();
@@ -61,11 +96,23 @@ public class BluetoothServiceConnect {
 
     @SuppressLint("MissingPermission")
     public boolean start(Context context, BluetoothSocket socket, String sendUuid) {
+        return start(context, socket, sendUuid, StaticObject.foregroundGate.currentGeneration());
+    }
+
+    @SuppressLint("MissingPermission")
+    public boolean start(Context context, BluetoothSocket socket, String sendUuid, long generation) {
+        return start(context, socket, sendUuid, generation, () -> true);
+    }
+
+    @SuppressLint("MissingPermission")
+    boolean start(Context context, BluetoothSocket socket, String sendUuid, long generation,
+                  SessionOwner ownerStillActive) {
         if (socket == null) {
             return false;
         }
 
         duplicateSession = false;
+        foregroundGeneration = generation;
 
         bluetoothSocket = socket;
         this.sendUuid = sendUuid;
@@ -77,62 +124,21 @@ public class BluetoothServiceConnect {
             listenerUuid = UUID.randomUUID().toString();
             bluetoothAdd = address;
             bluetoothName = remoteDevice.getName();
-            frameConfig = BluetoothProtocolConfigStore.get(context, address);
-            textEncoding = BluetoothTextEncodingStore.get(context, address);
+            frameConfig = pluginOwned ? new BluetoothFrameConfig(BluetoothFrameMode.RAW, 65536, 1, new byte[0], 0)
+                    : BluetoothProtocolConfigStore.get(context, address);
+            textEncoding = pluginOwned ? BluetoothTextEncoding.UTF_8 : BluetoothTextEncodingStore.get(context, address);
             bufferedOutputStream = new BufferedOutputStream(socket.getOutputStream());
             bufferedInputStream = new BufferedInputStream(socket.getInputStream());
-            while (true) {
-                BluetoothServiceConnect existing = StaticObject.bluetoothSocketMap.putIfAbsent(address, this);
-                if (existing == null) {
-                    break;
-                }
-                if (existing.closed.get()
-                        && StaticObject.bluetoothSocketMap.remove(address, existing)) {
-                    // The previous session is already closing but has not finished its
-                    // cleanup yet. Retry ownership after removing its stale slot.
-                    continue;
-                }
-                duplicateSession = true;
-                closeQuietly(bufferedOutputStream);
-                closeQuietly(bufferedInputStream);
-                closeSocketQuietly(socket);
-                closed.set(true);
-                return false;
+            final String sessionAddress = address;
+            final boolean[] started = {false};
+            // Invalidation and map publication are atomic. Socket setup/close happen
+            // outside the gate so background teardown never waits on blocked I/O here.
+            StaticObject.foregroundGate.runIfCurrent(generation,
+                    () -> started[0] = ownerStillActive.isActive() && activateSession(sessionAddress));
+            if (!started[0]) {
+                closeInternal();
             }
-            sendQueue = new BluetoothSendQueue(this::writePayload,
-                    new BluetoothSendQueue.Listener() {
-                        @Override
-                        public void onStatus(long requestId, BluetoothSendStatus status,
-                                              int pendingCount, Throwable error) {
-                            onSendStatus(requestId, status, pendingCount, error);
-                        }
-
-                        @Override
-                        public void onProgress(long requestId, int sentBytes, int totalBytes) {
-                            onSendProgress(requestId, sentBytes, totalBytes);
-                        }
-                    });
-            StaticObject.bluetoothEvent.addEventListener(BluetoothType.SEND, event -> {
-                Msg msg = (Msg) event.getEventData()[0];
-                if (!bluetoothAdd.equals(msg.getBluetoothAdd()) || closed.get()) {
-                    return;
-                }
-                byte[] payload = payloadForSend(msg);
-                if (msg.getSegmentSize() > 0) {
-                    sendQueue.enqueueSegmented(payload, msg.getSegmentSize(),
-                            Math.max(0L, msg.getSegmentIntervalMillis()));
-                } else {
-                    sendQueue.enqueue(payload);
-                }
-            }, listenerUuid);
-
-            StaticObject.connectionRegistry.set(address, BluetoothConnectionState.CONNECTED);
-            connectedAtMillis = System.currentTimeMillis();
-
-            startFrameTimeoutMonitor();
-            receiveThread = new Thread(this::receiveLoop, "bt-receive-" + address);
-            receiveThread.start();
-            return true;
+            return started[0];
         } catch (IOException | RuntimeException e) {
             Log.e(TAG, "Failed to initialize session "
                     + (address == null ? "unknown" : address), e);
@@ -141,35 +147,104 @@ public class BluetoothServiceConnect {
         }
     }
 
+    private boolean activateSession(String address) {
+        if (closed.get()) {
+            return false;
+        }
+        if (!BluetoothSessionOwners.acquire("classic", address, this)) {
+            duplicateSession = true;
+            return false;
+        }
+        while (true) {
+            BluetoothServiceConnect existing = StaticObject.bluetoothSocketMap.putIfAbsent(address, this);
+            if (existing == null) {
+                break;
+            }
+            if (existing.closed.get()
+                    && StaticObject.bluetoothSocketMap.remove(address, existing)) {
+                // The previous session is already closing but has not finished its
+                // cleanup yet. Retry ownership after removing its stale slot.
+                continue;
+            }
+            duplicateSession = true;
+            return false;
+        }
+        sendQueue = new BluetoothSendQueue(this::writePayload,
+                new BluetoothSendQueue.Listener() {
+                    @Override
+                    public void onStatus(long requestId, BluetoothSendStatus status,
+                                          int pendingCount, Throwable error) {
+                        onSendStatus(requestId, status, pendingCount, error);
+                    }
+
+                    @Override
+                    public void onProgress(long requestId, int sentBytes, int totalBytes) {
+                        onSendProgress(requestId, sentBytes, totalBytes);
+                    }
+                });
+        if (!pluginOwned) StaticObject.bluetoothEvent.addEventListener(BluetoothType.SEND, event -> {
+            Msg msg = (Msg) event.getEventData()[0];
+            if (!StaticObject.foregroundGate.isCurrent(foregroundGeneration)
+                    || !bluetoothAdd.equals(msg.getBluetoothAdd()) || closed.get()
+                    || msg.isSendCanceled() || !msg.isForegroundGenerationCurrent()
+                    || msg.getForegroundGeneration() != foregroundGeneration
+                    || !sessionId.equals(msg.getSessionId())) {
+                return;
+            }
+            if (!msg.claimTransportAdmission()) return;
+            pendingMessages.put(msg.getRequestId(), msg);
+            try {
+                byte[] payload = payloadForSend(msg);
+                if (msg.getSegmentSize() > 0) {
+                    sendQueue.enqueueSegmented(msg.getRequestId(), payload, msg.getSegmentSize(),
+                            Math.max(0L, msg.getSegmentIntervalMillis()), msg.getSendBatch());
+                } else {
+                    sendQueue.enqueue(msg.getRequestId(), payload, msg.getSendBatch());
+                }
+            } catch (IllegalArgumentException invalidPayload) {
+                pendingMessages.remove(msg.getRequestId());
+                StaticObject.publishSendStatus(msg, BluetoothSendStatus.FAILED, invalidPayload);
+            }
+        }, listenerUuid);
+
+        StaticObject.connectionRegistry.set(address, BluetoothConnectionState.CONNECTED);
+        connectedAtMillis = System.currentTimeMillis();
+
+        frameDecoder = new StreamFrameDecoder(frameConfig == null
+                ? BluetoothFrameConfig.defaultConfig() : frameConfig);
+        if (frameConfig != null && frameConfig.getMode() == BluetoothFrameMode.RAW) {
+            streamingTextDecoder = new BluetoothEncodingUtils.StreamingTextDecoder(textEncoding);
+        }
+        startFrameTimeoutMonitor();
+        receiveThread = new Thread(this::receiveLoop, "bt-receive-" + address);
+        receiveThread.start();
+        return true;
+    }
+
     private void receiveLoop() {
         byte[] buffer = new byte[1024];
-        StreamFrameDecoder decoder = new StreamFrameDecoder(frameConfig == null
-                ? BluetoothFrameConfig.defaultConfig() : frameConfig);
-        frameDecoder = decoder;
+        StreamFrameDecoder decoder = frameDecoder;
         try {
             int read;
             while (!closed.get() && (read = bufferedInputStream.read(buffer)) != -1) {
                 bytesReceivedCount.addAndGet(read);
-                for (byte[] frame : decoder.append(buffer, read)) {
-                    publishReceivedFrame(frame);
+                // Both the reader and timeout worker publish under this lock: a
+                // timeout frame must not be overtaken by a later socket read.
+                synchronized (framePublicationLock) {
+                    for (byte[] frame : decoder.append(buffer, read)) publishReceivedFrame(frame);
+                    reportDroppedFrames(decoder);
                 }
-                for (byte[] frame : decoder.pollTimeout(System.currentTimeMillis())) {
-                    publishReceivedFrame(frame);
-                }
-                reportDroppedFrames(decoder);
             }
             if (!closed.get()) {
-                StaticObject.connectionRegistry.setError(bluetoothAdd,
-                        BluetoothConnectionErrorCode.CONNECTION_CLOSED);
-                notifyDisconnect();
+                setCurrentSessionError(BluetoothConnectionErrorCode.CONNECTION_CLOSED);
+                notifyDisconnect("remote_closed");
             }
         } catch (IOException e) {
             if (!closed.get()) {
                 errorCount.incrementAndGet();
-                StaticObject.connectionRegistry.setError(bluetoothAdd,
-                        BluetoothConnectionErrorCode.classifyRead(e));
+                setCurrentSessionError(BluetoothConnectionErrorCode.classifyRead(e));
                 Log.e(TAG, "Receive failed for " + bluetoothAdd, e);
-                notifyDisconnect();
+                notifyDisconnect("read_failed");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -178,20 +253,46 @@ public class BluetoothServiceConnect {
         }
     }
 
-    private void notifyDisconnect() {
-        if (!disconnectNotified.compareAndSet(false, true) || bluetoothAdd == null) {
+    private void notifyDisconnect(String reason) {
+        if (bluetoothAdd == null || !StaticObject.foregroundGate.isCurrent(foregroundGeneration) || closed.get()
+                || StaticObject.bluetoothSocketMap.get(bluetoothAdd) != this
+                || !disconnectNotified.compareAndSet(false, true)) {
             return;
         }
-        BluetoothTelemetry.logDisconnect();
-        StaticObject.reconnectManager.onUnexpectedDisconnect(bluetoothAdd);
-        Msg msg = new Msg(bluetoothAdd);
-        msg.setStateType(1);
-        StaticObject.mTaskQueue.offer(msg);
+        closeReason = normalizeCloseReason(reason);
+        if (pluginOwned) return;
+        BluetoothTelemetry.logDisconnect(closeReason,
+                BluetoothTelemetryPolicy.elapsedMillis(
+                        connectedAtMillis, System.currentTimeMillis()));
+        if (!pluginOwned) StaticObject.reconnectManager.onUnexpectedDisconnect(bluetoothAdd, foregroundGeneration, sessionId);
+        StaticObject.foregroundGate.runIfCurrent(foregroundGeneration, () -> {
+            if (StaticObject.bluetoothSocketMap.get(bluetoothAdd) == this && !closed.get()) {
+                Msg msg = new Msg(bluetoothAdd);
+                msg.setSessionId(sessionId);
+                msg.setSendUuid(sendUuid);
+                msg.setBluetoothName(bluetoothName);
+                msg.setForegroundGeneration(foregroundGeneration);
+                msg.setStateType(1);
+                StaticObject.submitMessage(msg);
+            }
+        });
     }
+
+    private void setCurrentSessionError(BluetoothConnectionErrorCode error) {
+        StaticObject.foregroundGate.runIfCurrent(foregroundGeneration, () -> {
+            if (!closed.get() && StaticObject.bluetoothSocketMap.get(bluetoothAdd) == this) {
+                StaticObject.connectionRegistry.setError(bluetoothAdd, error);
+            }
+        });
+    }
+
+    public boolean isPluginOwned() { return pluginOwned; }
 
     public boolean isConnected() {
         return !closed.get() && bluetoothSocket != null && bluetoothSocket.isConnected();
     }
+
+    public boolean isSessionOpen() { return !closed.get(); }
 
     /** Returns true when this wrapper rejected a socket because another session owns the MAC. */
     public boolean isDuplicateSession() {
@@ -204,6 +305,23 @@ public class BluetoothServiceConnect {
 
     public String getSendUuid() {
         return sendUuid;
+    }
+
+    public String getSessionId() { return sessionId; }
+
+    /** Attach actual transport metadata, rejecting work captured for an old session. */
+    public boolean bindOutboundMessage(Msg message) {
+        if (message == null || closed.get() || !message.isForegroundGenerationCurrent()
+                || message.getForegroundGeneration() != foregroundGeneration
+                || !StaticObject.foregroundGate.isCurrent(foregroundGeneration)
+                || (message.getSessionId() != null && !sessionId.equals(message.getSessionId()))) return false;
+        message.setBluetoothAdd(bluetoothAdd);
+        message.setBluetoothName(bluetoothName);
+        message.setSendUuid(sendUuid);
+        message.setSessionId(sessionId);
+        message.setTextEncoding(textEncoding);
+        if (!message.hasPayload()) message.setPayload(encodeTextPayload(message.getContent()));
+        return true;
     }
 
     public long getConnectedAtMillis() {
@@ -229,6 +347,12 @@ public class BluetoothServiceConnect {
 
     public int cancelSegmentedSends() {
         return sendQueue == null ? 0 : sendQueue.cancelSegmented();
+    }
+
+    public int getPendingSendCount() { return sendQueue == null ? 0 : sendQueue.getPendingCount(); }
+    public long getPendingSendBytes() { return sendQueue == null ? 0L : sendQueue.getPendingBytes(); }
+    public boolean canAcceptSend(int payloadBytes) {
+        return !closed.get() && sendQueue != null && sendQueue.canAccept(payloadBytes);
     }
 
     public BluetoothSendStatus getLastSendStatus() {
@@ -272,9 +396,10 @@ public class BluetoothServiceConnect {
     }
 
     public void close() {
-        if (bluetoothAdd != null) {
+        if (!pluginOwned && bluetoothAdd != null) {
             StaticObject.reconnectManager.disable(bluetoothAdd);
         }
+        closeReason = "user_requested";
         closeInternal();
     }
 
@@ -283,11 +408,12 @@ public class BluetoothServiceConnect {
      * preserving the user's per-device automatic reconnect preference.
      */
     public void closeForLifecycle() {
+        closeReason = "lifecycle";
         closeInternal();
     }
 
     public void closeAfterUnexpectedDisconnect() {
-        notifyDisconnect();
+        notifyDisconnect("acl_disconnected");
         closeInternal();
     }
 
@@ -295,51 +421,45 @@ public class BluetoothServiceConnect {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
-        BluetoothTelemetry.logSessionSummary("spp", bytesSentCount.get(),
-                bytesReceivedCount.get(), successfulSendCount.get(), receivedFrameCount.get());
+        if (connectedAtMillis > 0L) {
+            BluetoothTelemetry.logSessionSummary("spp",
+                    BluetoothTelemetryPolicy.elapsedMillis(
+                            connectedAtMillis, System.currentTimeMillis()),
+                    bytesSentCount.get(), bytesReceivedCount.get(),
+                    successfulSendCount.get(), receivedFrameCount.get(),
+                    failedSendCount.get(), errorCount.get(), closeReason);
+        }
         if (listenerUuid != null) {
             StaticObject.bluetoothEvent.deleteAllEventByUuid(listenerUuid);
         }
         if (sendQueue != null) {
             sendQueue.close();
         }
+        BluetoothTransportCloser.close(bluetoothSocket, bufferedOutputStream, bufferedInputStream);
         if (frameTimeoutExecutor != null) {
             frameTimeoutExecutor.shutdownNow();
             frameTimeoutExecutor = null;
         }
         if (bluetoothAdd != null) {
-            boolean removed = StaticObject.bluetoothSocketMap.remove(bluetoothAdd, this);
-            if (removed && StaticObject.connectionRegistry.get(bluetoothAdd)
-                    != BluetoothConnectionState.RECONNECTING) {
-                StaticObject.connectionRegistry.set(bluetoothAdd, BluetoothConnectionState.DISCONNECTED);
+            BluetoothSessionOwners.release("classic", bluetoothAdd, this);
+            synchronized (StaticObject.foregroundGate) {
+                boolean removed = StaticObject.bluetoothSocketMap.remove(bluetoothAdd, this);
+                if (removed && StaticObject.connectionRegistry.get(bluetoothAdd)
+                        != BluetoothConnectionState.RECONNECTING) {
+                    StaticObject.connectionRegistry.set(bluetoothAdd, BluetoothConnectionState.DISCONNECTED);
+                }
             }
         }
-        closeQuietly(bufferedOutputStream);
-        closeQuietly(bufferedInputStream);
-        closeSocketQuietly(bluetoothSocket);
+        PluginListener observer = pluginListener;
+        if (observer != null) observer.onClosed();
         if (receiveThread != null && receiveThread != Thread.currentThread()) {
             receiveThread.interrupt();
         }
     }
 
-    private static void closeQuietly(java.io.Closeable closeable) {
-        if (closeable == null) return;
-        try {
-            closeable.close();
-        } catch (IOException ignored) {
-        }
-    }
-
-    private static void closeSocketQuietly(BluetoothSocket socket) {
-        if (socket == null) return;
-        try {
-            socket.close();
-        } catch (IOException ignored) {
-        }
-    }
-
     private void writePayload(byte[] payload) throws IOException {
-        if (closed.get() || bufferedOutputStream == null) {
+        if (!StaticObject.foregroundGate.isCurrent(foregroundGeneration)
+                || closed.get() || bufferedOutputStream == null) {
             throw new IOException("Bluetooth session is closed");
         }
         bufferedOutputStream.write(payload);
@@ -349,11 +469,20 @@ public class BluetoothServiceConnect {
 
     private void publishReceivedFrame(byte[] frame) throws InterruptedException {
         receivedFrameCount.incrementAndGet();
+        if (pluginOwned) {
+            PluginListener observer = pluginListener;
+            if (observer != null) observer.onData(frame.clone());
+            return;
+        }
         Msg msg = new Msg(frame, Msg.TYPE_RECEIVED, bluetoothAdd);
-        msg.setContent(BluetoothEncodingUtils.decode(frame, textEncoding));
+        msg.setSessionId(sessionId);
+        msg.setTextEncoding(textEncoding);
+        msg.setForegroundGeneration(foregroundGeneration);
+        msg.setContent(streamingTextDecoder == null ? BluetoothEncodingUtils.decode(frame, textEncoding)
+                : streamingTextDecoder.decode(frame));
         msg.setSendUuid(sendUuid);
         msg.setBluetoothName(bluetoothName);
-        StaticObject.mTaskQueue.put(msg);
+        StaticObject.submitReceivedMessage(msg);
     }
 
     private byte[] payloadForSend(Msg msg) {
@@ -380,10 +509,13 @@ public class BluetoothServiceConnect {
                 return;
             }
             try {
-                for (byte[] frame : frameDecoder.pollTimeout(System.currentTimeMillis())) {
-                    publishReceivedFrame(frame);
+                synchronized (framePublicationLock) {
+                    if (closed.get()) return;
+                    for (byte[] frame : frameDecoder.pollTimeout(StreamFrameDecoder.monotonicMillis())) {
+                        publishReceivedFrame(frame);
+                    }
+                    reportDroppedFrames(frameDecoder);
                 }
-                reportDroppedFrames(frameDecoder);
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
             }
@@ -396,8 +528,7 @@ public class BluetoothServiceConnect {
         if (dropped <= reported || !reportedDroppedFrames.compareAndSet(reported, dropped)) {
             return;
         }
-        StaticObject.connectionRegistry.setError(bluetoothAdd,
-                BluetoothConnectionErrorCode.FRAME_TOO_LARGE);
+        setCurrentSessionError(BluetoothConnectionErrorCode.FRAME_TOO_LARGE);
         errorCount.incrementAndGet();
         Log.w(TAG, "Dropped oversized frame for " + bluetoothAdd + ", total=" + dropped);
     }
@@ -405,8 +536,15 @@ public class BluetoothServiceConnect {
     private void onSendStatus(long requestId, BluetoothSendStatus status, int pendingCount,
                               Throwable error) {
         lastSendStatus = status;
+        PluginListener observer = pluginListener;
+        if (observer != null) observer.onSend(requestId, status, error);
+        Msg message = pendingMessages.get(requestId);
+        if (message != null) {
+            StaticObject.publishSendStatus(message, status, error);
+            if (status.isTerminal()) pendingMessages.remove(requestId, message);
+        }
         SendProgressListener listener = sendProgressListener;
-        if (listener != null) {
+        if (listener != null && (message == null || message.getSendStatus() == status)) {
             try {
                 listener.onStatus(status, requestId);
             } catch (RuntimeException ignored) {
@@ -421,10 +559,13 @@ public class BluetoothServiceConnect {
             failedSendCount.incrementAndGet();
             errorCount.incrementAndGet();
             lastSendError = error == null ? null : error.getMessage();
-            StaticObject.connectionRegistry.setError(bluetoothAdd,
-                    BluetoothConnectionErrorCode.classifyWrite(error));
+            if (error instanceof BluetoothQueueFullException) {
+                Log.w(TAG, "Send admission rejected for " + bluetoothAdd);
+                return;
+            }
+            setCurrentSessionError(BluetoothConnectionErrorCode.classifyWrite(error));
             Log.e(TAG, "Failed to send to " + bluetoothAdd + ", request=" + requestId, error);
-            notifyDisconnect();
+            notifyDisconnect("write_failed");
             closeInternal();
         } else if (status == BluetoothSendStatus.CANCELED) {
             canceledSendCount.incrementAndGet();
@@ -441,5 +582,9 @@ public class BluetoothServiceConnect {
         } catch (RuntimeException ignored) {
             // UI observers must not break the connection writer.
         }
+    }
+
+    private static String normalizeCloseReason(String reason) {
+        return reason == null || reason.trim().isEmpty() ? "unknown" : reason;
     }
 }

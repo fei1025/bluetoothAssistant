@@ -1,0 +1,17 @@
+{
+  "packageName": "com.zzf.bluetoothsmp",
+  "listings": [
+    {
+      "language": "zh-CN",
+      "title": "SPP蓝牙助手：经典蓝牙串口调试",
+      "shortDescription": "经典蓝牙 SPP/RFCOMM 串口调试工具，支持客户端与服务端、文本/HEX、分帧、CRC、命令宏、连续发送和自动重连。",
+      "fullDescription": "把 Android 手机变成经典蓝牙 SPP/RFCOMM 串口终端。无需为每台设备单独编写测试程序，即可完成数据收发、协议联调、重复指令测试和现场排障。\n\n面向嵌入式开发、IoT 设备联调和串口协议测试，可连接支持 SPP 的开发板、单片机、树莓派及蓝牙串口模块，也可让手机作为 SPP 服务端等待设备接入。\n\n主要功能\n\n【客户端与服务端】\n• 扫描附近蓝牙设备，并通过 SPP 主动连接兼容设备\n• 在手机上启动或停止 SPP/RFCOMM 服务端，接受外部设备连接\n• 客户端与服务端可分别设置 UUID\n• 支持全局及单设备自动重连\n• 可为设备设置别名和收藏\n\n【数据收发】\n• 聊天模式，查看和发送消息\n• 自定义快捷键盘，可分别设置按下与松开时发送的内容\n• UTF-8、GBK、ASCII 和 HEX 编码\n• RAW、CRLF、LF、CR、固定长度、自定义结束符和超时分包\n• 单次发送、连续发送和大数据分片发送进度\n\n【校验与自动化】\n• SUM8、XOR、CRC8、CRC16/MODBUS、CRC16/CCITT 校验\n• 使用 TEXT、HEX、DELAY 编写快捷命令宏\n• 宏支持按设备保存、重复执行、导入和导出\n\n【调试与记录】\n• 实时查看 HEX/ASCII 数据日志\n• 查看连接时长、收发字节数、消息数、帧数、错误数和吞吐率\n• 生成并复制连接诊断报告\n• 导出调试日志\n• 按设备保存本地消息历史\n\n适用场景\n• 蓝牙串口模块、单片机、开发板和树莓派调试\n• 嵌入式设备、IoT 硬件和自研协议联调\n• 重复指令测试、现场排障和连接稳定性观察\n\n兼容性与使用说明\n• 本应用使用经典蓝牙 RFCOMM/SPP，不支持 BLE GATT。\n• 蓝牙通信仅在应用处于前台时保持；切到后台或锁屏会断开。返回应用后，可按已保存的服务开关和自动重连设置恢复。\n• Android 12 及以上版本需要“附近设备”权限；Android 6–11 可能需要定位权限才能扫描蓝牙设备。\n• 需要 Android 6.0 或更高版本。"
+    },
+    {
+      "language": "en-US",
+      "title": "Bluetooth SPP Serial Terminal",
+      "shortDescription": "Classic Bluetooth SPP/RFCOMM client and server with HEX, CRC, macros and logs.",
+      "fullDescription": "Turn your Android device into a Classic Bluetooth SPP/RFCOMM terminal for embedded development, IoT testing, device commissioning, and serial protocol debugging. Connect to a Raspberry Pi, development board, Bluetooth serial module, or other compatible device. You can also run an SPP server on your phone and accept incoming connections.\n\nKey features\n\nCLIENT AND SERVER\n- Connect to remote SPP devices as a client\n- Start an RFCOMM/SPP server and accept incoming connections\n- Configure separate UUIDs for client and server\n- Enable automatic reconnection globally or per device\n\nSEND, RECEIVE, AND FRAME DATA\n- Use chat mode and a customizable shortcut keyboard\n- Send and receive text or HEX data\n- Use UTF-8, GBK, ASCII, or HEX encoding\n- Choose RAW, CRLF, LF, CR, fixed-length, custom-delimiter, or timeout-based framing\n- Send data once or continuously\n- Split large transmissions into chunks and monitor progress\n\nCHECKSUMS AND AUTOMATION\n- Add SUM8, XOR, CRC-8, CRC-16/MODBUS, or CRC-16/CCITT checks\n- Build reusable command macros from TEXT, HEX, and DELAY steps\n- Save macros per device, run them in a loop, and import or export macro sets\n\nDIAGNOSTICS AND HISTORY\n- View connection status, connection time, sent and received bytes, message counts, frame counts, errors, and throughput\n- Copy a connection diagnostics report and export debug logs\n- Keep local message history organized by device\n- Save device aliases, favorites, and per-device settings\n\nCompatibility and limitations\n- Designed for Classic Bluetooth RFCOMM/SPP only. BLE GATT is not supported.\n- Bluetooth communication is available only while the app is in the foreground. The connection closes when the app enters the background or the screen is locked. When you return to the app, listening or reconnection resumes according to your settings.\n- Requires Android 6.0 or later. Depending on the Android version, Nearby devices or location permission may be required for Bluetooth discovery and connection."
+    }
+  ]
+}
